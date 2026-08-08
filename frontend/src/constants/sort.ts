@@ -5,10 +5,12 @@ export interface SortOption {
   label: string
 }
 
-/** 画廊排序（9 种，不含 page） */
+/** 画廊排序（11 种，不含 page） */
 export const GALLERY_SORT_OPTIONS: SortOption[] = [
   { value: 'mtime_desc', label: '最新优先' },
   { value: 'mtime_asc', label: '最旧优先' },
+  { value: 'playcount_desc', label: '最多播放' },
+  { value: 'playcount_asc', label: '最少播放' },
   { value: 'title_asc', label: '标题 A-Z' },
   { value: 'title_desc', label: '标题 Z-A' },
   { value: 'size_desc', label: '体积最大' },

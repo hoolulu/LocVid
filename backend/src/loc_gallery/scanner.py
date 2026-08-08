@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import hashlib
+import os
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,6 +67,15 @@ def get_category_sorted_ids(library_id: str, category: str, sort: str) -> list[s
         items = list((_category_items.get(library_id) or {}).get(category, []))
     if sort == "random":
         return [v.id for v in items]
+    if sort in ("playcount_desc", "playcount_asc"):
+        # 按播放次数排序（浏览/搜索通用；scanner 不建该索引，故此处现算）
+        from loc_gallery.history_store import get_history_map
+        hist_map = get_history_map(library_id)
+        items.sort(
+            key=lambda v: int((hist_map.get(v.id) or {}).get("play_count", 0)),
+            reverse=(sort == "playcount_desc"),
+        )
+        return [v.id for v in items]
     sort_key = {
         "mtime_desc": lambda v: v.mtime,
         "mtime_asc": lambda v: v.mtime,
@@ -89,6 +100,29 @@ def _is_video(path: Path) -> bool:
 
 def _should_skip_dir(path: Path) -> bool:
     return path.name in IGNORE_DIRS or path == WEB_ROOT
+
+
+# watch_ignore_dirs 解析结果 TTL 缓存：scan_all 每目录 + watchdog 每事件都会调用，
+# 而 get_setting 每次读盘，必须缓存避免拖慢扫描/监听
+_ignore_tokens_cache: dict[str, tuple[float, list[str]]] = {}
+_IGNORE_TOKENS_TTL = 5.0
+
+
+def _should_skip_watch_dir(path: Path, library_id: str) -> bool:
+    """设置项 watch_ignore_dirs（逗号分隔的目录名）匹配时跳过扫描/监听。"""
+    from loc_gallery.settings_store import get_setting
+    now = time.time()
+    cached = _ignore_tokens_cache.get(library_id)
+    if cached is None or now - cached[0] > _IGNORE_TOKENS_TTL:
+        raw = (get_setting("watch_ignore_dirs", library_id) or "").strip()
+        tokens = [t.strip().lower() for t in raw.split(",") if t.strip()]
+        _ignore_tokens_cache[library_id] = (now, tokens)
+    else:
+        tokens = cached[1]
+    if not tokens:
+        return False
+    name = path.name.lower()
+    return any(t in name for t in tokens)
 
 
 def _video_item_from_path(
@@ -193,11 +227,21 @@ def scan_all(video_root: Path, library_id: str) -> list[VideoItem]:
         for category_dir in sorted(video_root.iterdir()):
             if not category_dir.is_dir() or _should_skip_dir(category_dir):
                 continue
+            if _should_skip_watch_dir(category_dir, library_id):
+                continue
             category = category_dir.name
-            for video_path in category_dir.rglob("*"):
-                if not _is_video(video_path):
-                    continue
-                _add_video(video_path, category, category_dir)
+            # os.walk + 剪枝：跳过 IGNORE_DIRS / 用户配置忽略的子目录（cache/node_modules/.git 等），
+            # 避免 rglob 全量遍历垃圾目录（万级文件库的集中耗时点）
+            for dirpath, dirnames, filenames in os.walk(category_dir):
+                dirnames[:] = [
+                    d for d in dirnames
+                    if not _should_skip_dir(Path(dirpath) / d)
+                    and not _should_skip_watch_dir(Path(dirpath) / d, library_id)
+                ]
+                for name in filenames:
+                    video_path = Path(dirpath) / name
+                    if _is_video(video_path):
+                        _add_video(video_path, category, category_dir)
     except OSError:
         pass
 
@@ -324,10 +368,18 @@ def get_folder_tree(library_id: str, category: str) -> dict:
             if parent in nested:
                 nested[parent]["children"].append(node)
 
-    def _sort_tree(nodes: list[dict]) -> list[dict]:
+    # 分类内文件夹自定义顺序（folder_order）：每层按用户拖拽顺序重排，未记录的按名称字母序
+    from loc_gallery.category_store import get_folder_order
+    folder_order = get_folder_order(library_id, category)
+
+    def _sort_tree(nodes: list[dict], parent: str = "") -> list[dict]:
         nodes.sort(key=lambda n: n["name"].lower())
+        ordered = folder_order.get(parent) or []
+        if ordered:
+            idx = {p: i for i, p in enumerate(ordered)}
+            nodes.sort(key=lambda n: (idx.get(n["path"], 10_000), n["name"].lower()))
         for n in nodes:
-            n["children"] = _sort_tree(n["children"])
+            n["children"] = _sort_tree(n["children"], n["path"])
             n["total"] = n["direct"] + sum(c["total"] for c in n["children"])
         return nodes
 

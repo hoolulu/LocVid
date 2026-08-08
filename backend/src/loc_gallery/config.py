@@ -81,6 +81,8 @@ THUMB_JITTER_PCT = 10  # ± random offset for "换一组" (5-15%)
 THUMB_JITTER_MIN = 6   # minimum position percentage (3-12)
 THUMB_JITTER_MAX = 94  # maximum position percentage (88-97)
 DEFAULT_PAGE_SIZE = 32
+DEFAULT_SORT = "mtime_desc"  # 画廊默认排序（未手动选过排序时生效）
+WATCH_IGNORE_DIRS = ""  # watchdog 忽略的目录名（逗号分隔），如 "cache,.git"
 HISTORY_RETENTION_DAYS = 180
 
 FILE_STABLE_CHECK_DELAY = 5.0

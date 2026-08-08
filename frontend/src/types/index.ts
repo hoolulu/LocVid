@@ -58,6 +58,8 @@ export interface Video {
   durationSec?: number
   albumIds: string[]
   formatBadge?: string
+  /** 悬停预览可用性：false=可播放但不支持原生 video 预览（伪装TS/MKV/HEVC 等） */
+  previewable?: boolean
 }
 
 export interface VideosResponse {
@@ -111,6 +113,8 @@ export interface Settings {
   thumb_jitter_min?: number
   thumb_jitter_max?: number
   default_page_size: number
+  default_sort?: SortMode
+  watch_ignore_dirs?: string
   external_player_path: string
   history_retention_days: number
   html5_playlist_autoplay: boolean
@@ -147,3 +151,5 @@ export type SortMode =
   | 'mtime_asc'
   | 'size_desc'
   | 'size_asc'
+  | 'playcount_desc'
+  | 'playcount_asc'

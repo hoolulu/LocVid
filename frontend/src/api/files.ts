@@ -8,7 +8,7 @@ export const deleteVideos = (ids: string[]) =>
   })
 
 export const renameVideo = (id: string, newName: string) =>
-  api('/videos/rename', {
+  api<{ ok: boolean; old_id: string; id: string; title: string }>('/videos/rename', {
     method: 'POST',
     body: JSON.stringify({ id, new_name: newName }),
   })
@@ -88,6 +88,12 @@ export const moveFolder = (
 export const reorderCategories = (order: string[]) =>
   api('/categories/reorder', { method: 'POST', body: JSON.stringify({ order }) })
 
+export const reorderFolders = (category: string, order: Record<string, string[]>) =>
+  api('/folders/reorder', {
+    method: 'POST',
+    body: JSON.stringify({ category, order }),
+  })
+
 export const setCategorySortMode = (sort_mode: string) =>
   api('/categories/sort-mode', { method: 'POST', body: JSON.stringify({ sort_mode }) })
 
@@ -96,7 +102,3 @@ export const batchFavorites = (ids: string[], action: 'add' | 'remove') =>
     method: 'POST',
     body: JSON.stringify({ ids, action }),
   })
-
-export const beginBatchRemux = () => api('/remux/batch/begin', { method: 'POST' })
-
-export const endBatchRemux = () => api('/remux/batch/end', { method: 'POST' })

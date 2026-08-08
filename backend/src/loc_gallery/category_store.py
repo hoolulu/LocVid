@@ -12,6 +12,8 @@ _DEFAULTS = {
     "starred": [],
     "order": [],
     "sort_mode": "custom",
+    # 分类内文件夹自定义顺序：{分类名: {父路径: [子路径...]}}，父路径 "" 表示分类根层
+    "folder_order": {},
 }
 
 SORT_MODES = ("custom", "name_asc", "name_desc", "count_desc", "count_asc")
@@ -46,6 +48,19 @@ def _save_raw(library_id: str, data: dict) -> dict:
 def get_meta(library_id: str) -> dict:
     with _lock:
         return _load_raw(library_id)
+
+
+def import_category_meta(library_id: str, data: dict) -> dict:
+    """导入分类元数据全量（覆盖当前；只保留已知键，自动清理旧版本遗留）。"""
+    with _lock:
+        merged = deepcopy(_DEFAULTS)
+        if isinstance(data, dict):
+            for k in _DEFAULTS:
+                if k in data:
+                    merged[k] = data[k]
+        if merged["sort_mode"] not in SORT_MODES:
+            merged["sort_mode"] = "custom"
+        return _save_raw(library_id, merged)
 
 
 def sort_categories(library_id: str, counts: dict[str, int]) -> list[dict]:
@@ -115,4 +130,31 @@ def set_sort_mode(library_id: str, mode: str) -> dict:
     with _lock:
         meta = _load_raw(library_id)
         meta["sort_mode"] = mode
+        return _save_raw(library_id, meta)
+
+
+def get_folder_order(library_id: str, category: str) -> dict:
+    """读取分类内文件夹自定义顺序：{父路径: [子路径...]}。"""
+    with _lock:
+        meta = _load_raw(library_id)
+    return dict((meta.get("folder_order") or {}).get(category) or {})
+
+
+def set_folder_order(library_id: str, category: str, order_map: dict) -> dict:
+    """保存分类内文件夹自定义顺序：{父路径: [子路径...]}。
+    合并语义：只更新传入的层（值为空列表表示删除该层记录，恢复字母序）。"""
+    with _lock:
+        meta = _load_raw(library_id)
+        orders = dict(meta.get("folder_order") or {})
+        current = dict(orders.get(category) or {})
+        for k, v in order_map.items():
+            if v:
+                current[k] = list(v)
+            else:
+                current.pop(k, None)
+        if current:
+            orders[category] = current
+        else:
+            orders.pop(category, None)
+        meta["folder_order"] = orders
         return _save_raw(library_id, meta)

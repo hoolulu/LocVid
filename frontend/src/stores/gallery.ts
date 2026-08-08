@@ -10,17 +10,15 @@ import type { Category, FolderTreeResponse, SortMode, Video, ViewMode } from '@/
 import type { ThemePreset } from '@/stores/settings'
 import { DEFAULT_PAGE_SIZE } from '@/constants/layout'
 import { pageSizeKey, PREFS_KEYS, getSavedBrowseState, setSavedBrowseState } from '@/utils/userPrefs'
-import {
-  buildVideoListCacheKey,
-  clearVideoListCache,
-  readVideoListCache,
-  writeVideoListCache,
-} from '@/utils/videoListCache'
+import { clearVideoListCache } from '@/utils/videoListCache'
 
 
 
 const RANDOM_SEED_KEY = PREFS_KEYS.randomSeed
 const SORT_KEY = PREFS_KEYS.sort
+
+// 视频列表请求序号：快速连续搜索/翻页时丢弃过期响应，避免慢响应覆盖新结果
+let videosReqSeq = 0
 
 export const DEFAULT_GALLERY_SORT: SortMode = 'mtime_desc'
 
@@ -47,6 +45,9 @@ export const useGalleryStore = defineStore('gallery', () => {
   const query = ref('')
 
   const sort = ref<SortMode>(DEFAULT_GALLERY_SORT)
+
+  // 分类排序模式（custom=自定义顺序可拖拽；其余按名称/数量排序）——从后端同步，避免"显示自定义实际非自定义"导致拖拽无效
+  const categorySortMode = ref('custom')
 
   const randomSeed = ref<number | null>(null)
 
@@ -80,6 +81,13 @@ export const useGalleryStore = defineStore('gallery', () => {
     const saved = localStorage.getItem(SORT_KEY)
     if (saved) sort.value = saved as SortMode
     else sort.value = DEFAULT_GALLERY_SORT
+  }
+
+  /** 应用设置里的默认排序：仅在用户从未手动选过排序（无 localStorage 记录）时生效 */
+  function applyDefaultSort(defaultSort?: SortMode) {
+    if (defaultSort && !localStorage.getItem(SORT_KEY)) {
+      sort.value = defaultSort
+    }
   }
 
   function persistSort() {
@@ -147,6 +155,8 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     categories.value = data.items
 
+    categorySortMode.value = data.sort_mode || 'custom'
+
   }
 
 
@@ -166,6 +176,8 @@ export const useGalleryStore = defineStore('gallery', () => {
 
 
   async function loadVideos() {
+
+    const mySeq = ++videosReqSeq
 
     const params: Record<string, string | number | boolean> = {
 
@@ -193,23 +205,16 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     if (sort.value === 'random' && randomSeed.value != null) params.seed = randomSeed.value
 
-    const cacheKey = buildVideoListCacheKey(params)
-    const cached = readVideoListCache(cacheKey)
-    if (cached) {
-      videos.value = cached.items
-      total.value = cached.total
-      page.value = cached.page
-      pageSize.value = cached.pageSize
-      totalPages.value = cached.totalPages
-      loading.value = false
-    } else {
-      loading.value = true
-    }
+    // 不再读列表缓存：本地服务毫秒级返回，且缓存键无版本校验会命中改名/重扫前的旧数据
+    // （旧 id 的专辑/收藏状态），导致改名后页面显示过期状态
+    loading.value = true
     refreshing.value = true
 
     try {
 
       const data = await getVideos(params)
+
+      if (mySeq !== videosReqSeq) return // 已被更新的请求取代，丢弃过期响应
 
       videos.value = data.items
 
@@ -221,12 +226,12 @@ export const useGalleryStore = defineStore('gallery', () => {
 
       totalPages.value = data.totalPages
 
-      writeVideoListCache(cacheKey, data)
-
     } finally {
 
-      loading.value = false
-      refreshing.value = false
+      if (mySeq === videosReqSeq) {
+        loading.value = false
+        refreshing.value = false
+      }
 
     }
 
@@ -350,6 +355,8 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     categories,
 
+    categorySortMode,
+
     category,
 
     folder,
@@ -387,6 +394,7 @@ export const useGalleryStore = defineStore('gallery', () => {
     restoreRandomSeed,
     restoreBrowseState,
     restoreSort,
+    applyDefaultSort,
     restorePageSize,
     setPageSize,
 

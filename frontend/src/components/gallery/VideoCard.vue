@@ -13,6 +13,7 @@ const props = defineProps<{
   video: Video
   showPlayCount?: boolean
   showProgress?: boolean
+  focused?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +33,22 @@ const albumCount = computed(() => props.video.albumIds?.length || 0)
 const albumTitle = computed(() =>
   albumCount.value > 0 ? `已在 ${albumCount.value} 个专辑` : '加入专辑',
 )
+
+/** 搜索关键词高亮：仅当全局搜索词命中标题时渲染 <mark>（HTML 已转义，防注入） */
+const highlightedTitle = computed(() => {
+  const title = props.video.title
+  const q = gallery.query?.trim()
+  if (!q) return ''
+  const idx = title.toLowerCase().indexOf(q.toLowerCase())
+  if (idx < 0) return ''
+  const esc = (s: string) =>
+    s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
+  return (
+    esc(title.slice(0, idx)) +
+    `<mark>${esc(title.slice(idx, idx + q.length))}</mark>` +
+    esc(title.slice(idx + q.length))
+  )
+})
 
 const progressPct = computed(() => {
   if (!props.video.playDuration || !props.video.playPosition) return 0
@@ -74,7 +91,8 @@ function onCheckChange(e: Event) {
 <template>
   <article
     class="video-card group relative w-full cursor-pointer self-start overflow-hidden rounded-[var(--lg-radius)] bg-[var(--lg-bg-elevated)] transition"
-    :class="{ 'video-card--selected': isSelected }"
+    :class="{ 'video-card--selected': isSelected, 'video-card--focused': focused }"
+    :data-video-id="video.id"
     data-testid="video-card"
     @click="onCardClick"
     @contextmenu.prevent="emit('contextmenu', $event)"
@@ -140,18 +158,18 @@ function onCheckChange(e: Event) {
           />
         </svg>
       </button>
+      <button
+        type="button"
+        class="card-fav"
+        :class="{ on: video.favorited }"
+        :title="video.favorited ? '取消收藏' : '收藏'"
+        :aria-label="video.favorited ? '取消收藏' : '收藏'"
+        @click.stop="emit('toggleFavorite', video.id)"
+      >
+        ♥
+      </button>
     </div>
 
-    <button
-      type="button"
-      class="card-fav"
-      :class="{ on: video.favorited }"
-      :title="video.favorited ? '取消收藏' : '收藏'"
-      :aria-label="video.favorited ? '取消收藏' : '收藏'"
-      @click.stop="emit('toggleFavorite', video.id)"
-    >
-      ♥
-    </button>
     <input
       type="checkbox"
       class="card-check"
@@ -162,7 +180,10 @@ function onCheckChange(e: Event) {
     />
 
     <div class="card-title-wrap px-2 pb-2 pt-1.5">
-      <h3 class="card-title line-clamp-2 text-sm leading-snug">{{ video.title }}</h3>
+      <h3 class="card-title line-clamp-2 text-sm leading-snug">
+        <span v-if="highlightedTitle" v-html="highlightedTitle" />
+        <template v-else>{{ video.title }}</template>
+      </h3>
       <p
         v-if="gallery.viewMode === 'history' && video.playedAt"
         class="mt-1 text-xs text-[var(--lg-text-muted)]"

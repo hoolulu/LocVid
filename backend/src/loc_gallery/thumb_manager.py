@@ -1112,6 +1112,47 @@ def batch_regenerate_with_candidates(video_ids: list[str], auto_select: bool = T
     return count, versions
 
 
+# ── 批量重生成异步队列（接口立即返回，后台 worker 逐个执行，避免大批量阻塞请求线程）──
+_batch_queue: list[tuple[str, list[str], bool]] = []
+_batch_lock = threading.Lock()
+_batch_worker: threading.Thread | None = None
+
+
+def _batch_worker_loop() -> None:
+    while True:
+        with _batch_lock:
+            if not _batch_queue:
+                global _batch_worker
+                _batch_worker = None
+                return
+            lid, ids, auto_select = _batch_queue.pop(0)
+        try:
+            set_thread_library(lid)
+            batch_regenerate_with_candidates(ids, auto_select=auto_select)
+        except Exception:
+            pass
+
+
+def enqueue_batch_regenerate(
+    video_ids: list[str],
+    auto_select: bool = True,
+    library_id: str | None = None,
+) -> int:
+    """批量重生成缩略图（异步）：入队由后台 worker 执行，返回排队数量。"""
+    global _batch_worker
+    if not video_ids:
+        return 0
+    lid = _lid(library_id)
+    with _batch_lock:
+        _batch_queue.append((lid, list(video_ids), bool(auto_select)))
+        if _batch_worker is None or not _batch_worker.is_alive():
+            _batch_worker = threading.Thread(
+                target=_batch_worker_loop, daemon=True, name="thumb-batch",
+            )
+            _batch_worker.start()
+    return len(video_ids)
+
+
 def remove_thumbs(video_ids: list[str]) -> None:
     with _lock:
         for vid in video_ids:
@@ -1121,6 +1162,27 @@ def remove_thumbs(video_ids: list[str]) -> None:
                 thumb.unlink(missing_ok=True)
         _mark_dirty()
     _schedule_flush()
+
+
+def migrate_thumb_id(library_id: str, old_id: str, new_id: str) -> None:
+    """改名/移动后缩略图索引与文件从旧 id 迁移到新 id（避免重新生成）。
+    立即同步落盘，避免后续调度读到旧 id 又重新生成。"""
+    if old_id == new_id:
+        return
+    with _lock:
+        idx = _idx(library_id)
+        if old_id in idx:
+            idx[new_id] = idx.pop(old_id)
+            _mark_dirty(library_id)
+    tdir = _tdir(library_id)
+    tdir.mkdir(parents=True, exist_ok=True)
+    # 文件迁移：主缩略图 + 候选/历史残留（{old_id}*.jpg → {new_id}*.jpg）
+    for p in tdir.glob(f"{old_id}*.jpg"):
+        try:
+            p.rename(tdir / (new_id + p.name[len(old_id):]))
+        except OSError:
+            pass
+    _flush_index_sync(library_id)
 
 
 def cleanup_orphans() -> int:
@@ -1665,14 +1727,23 @@ def _candidate_positions(count: int, jitter: bool = False) -> list[float]:
 
 
 def _generate_thumb_candidates(item: VideoItem, count: int = 6, jitter: bool = False, library_id: str | None = None) -> list[dict]:
-    """Generate N candidate thumbnails at evenly spaced positions. Returns [{pos, file}...]."""
+    """Generate N candidate thumbnails at evenly spaced positions. Returns [{pos, file, index, score}...]
+    按 Laplacian 清晰度评分降序返回：前端取 cands[0] 即为最优帧（"自动最优"名副其实）。"""
     positions = _candidate_positions(count, jitter=jitter)
     results = []
     tdir = _tdir(library_id)
     for i, pos in enumerate(positions):
         cand_path = tdir / f"{item.id}_c{i}.jpg"
         if _generate_thumb_file(item, position=pos, explicit_position=True, output=cand_path):
-            results.append({"pos": pos, "file": f"{item.id}_c{i}.jpg", "index": i})
+            score = 0.0
+            try:
+                score = _score_thumbnail_quality(cand_path)
+            except Exception:
+                pass
+            results.append({
+                "pos": pos, "file": f"{item.id}_c{i}.jpg", "index": i,
+                "score": round(score, 1),
+            })
 
     # All positions failed — try a rescue pass with absolute timestamps
     if not results:
@@ -1680,9 +1751,19 @@ def _generate_thumb_candidates(item: VideoItem, count: int = 6, jitter: bool = F
         for i, sec in enumerate(rescue):
             cand_path = tdir / f"{item.id}_c{i}.jpg"
             if _generate_thumb_file(item, position=sec, explicit_position=True, output=cand_path):
-                results.append({"pos": sec, "file": f"{item.id}_c{i}.jpg", "index": i})
+                score = 0.0
+                try:
+                    score = _score_thumbnail_quality(cand_path)
+                except Exception:
+                    pass
+                results.append({
+                    "pos": sec, "file": f"{item.id}_c{i}.jpg", "index": i,
+                    "score": round(score, 1),
+                })
                 break
 
+    # 评分降序：最清晰的候选排最前
+    results.sort(key=lambda r: r.get("score", 0.0), reverse=True)
     return results
 
 

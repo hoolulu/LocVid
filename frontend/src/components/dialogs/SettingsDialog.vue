@@ -13,6 +13,9 @@ import {
   restartService,
   updateLibrary,
 } from '@/api/files'
+import { exportData, importData } from '@/api'
+import { cleanupOrphans, getThumbStats, regenerateFailed } from '@/api/thumbs'
+import { GALLERY_SORT_OPTIONS } from '@/constants/sort'
 import type { Settings } from '@/types'
 
 const ui = useUiStore()
@@ -30,6 +33,44 @@ const form = reactive<Partial<Settings>>({})
 const newLib = reactive({ alias: '', path: '' })
 const pageSizeMode = ref<'40' | '80' | 'custom'>('40')
 const customPageSize = ref('40')
+
+// 缩略图维护（占用统计 / 清理孤立 / 重生成失败）
+const thumbStats = ref<{ files: number; bytes: number } | null>(null)
+
+async function loadThumbStats() {
+  try {
+    thumbStats.value = await getThumbStats()
+  } catch {
+    thumbStats.value = null
+  }
+}
+
+function formatThumbBytes(bytes: number): string {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let n = bytes
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024
+    i++
+  }
+  return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+async function onCleanupThumbs() {
+  const ok = await ui.showConfirm('将删除不再存在于视频库中的缩略图缓存（孤儿文件）。', '清理孤立缩略图')
+  if (!ok) return
+  const res = await cleanupOrphans()
+  ui.showToast(`已清理 ${res.removed} 个孤儿缩略图`)
+  await loadThumbStats()
+}
+
+async function onRegenerateFailed() {
+  const ok = await ui.showConfirm('将为生成失败的视频重新排队缩略图（会消耗一些时间）。', '重新生成失败缩略图')
+  if (!ok) return
+  const res = (await regenerateFailed()) as { regenerated?: number }
+  ui.showToast(`已重新生成 ${res.regenerated ?? 0} 张`)
+}
 
 const presets = [
   { value: 'netflix', label: '影院（白底全宽）' },
@@ -86,6 +127,7 @@ async function save() {
   applyPageSizeToForm()
   await settings.updateSettings({ ...form }, settingsScope.value)
   ui.showToast('设置已保存')
+  close()
 }
 
 async function pickPath() {
@@ -107,7 +149,8 @@ async function saveLibraryRow(lib: { id: string; alias: string; path: string }) 
 }
 
 async function onRemoveLibrary(id: string, alias: string) {
-  if (!confirm(`确定删除视频库「${alias}」？`)) return
+  const ok = await ui.showConfirm(`确定删除视频库「${alias}」？视频文件不会被删除。`, '删除视频库')
+  if (!ok) return
   await deleteLibrary(id)
   await library.loadLibraries()
   gallery.clearFolderCaches()
@@ -121,7 +164,8 @@ async function onRemoveLibrary(id: string, alias: string) {
 }
 
 async function onRestart() {
-  if (!confirm('确定重启服务？')) return
+  const ok = await ui.showConfirm('确定重启服务？')
+  if (!ok) return
   const before = await fetch('/api/health').then((r) => r.json()).catch(() => null)
   await restartService()
   ui.showToast('服务重启中…')
@@ -141,9 +185,61 @@ async function onRestart() {
 }
 
 async function onClearHistory() {
-  if (!confirm('确定清空播放记录？')) return
+  const ok = await ui.showConfirm('确定清空全部播放记录？')
+  if (!ok) return
   await clearHistory()
   ui.showToast('已清空')
+}
+
+// ── 数据备份（导出/导入）──
+const importFileInput = ref<HTMLInputElement | null>(null)
+
+function onPickImportFile() {
+  importFileInput.value?.click()
+}
+
+async function onExportData() {
+  try {
+    const data = await exportData()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `loc-gallery-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    ui.showToast('已导出备份文件')
+  } catch {
+    ui.showToast('导出失败')
+  }
+}
+
+async function onImportFilePick(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const data = JSON.parse(await file.text())
+    if (typeof data !== 'object' || data === null) throw new Error('bad payload')
+    const ok = await ui.showConfirm(
+      '导入将覆盖当前库的收藏/播放记录/专辑/分类顺序，并合并全局设置。建议先导出备份再导入。',
+      '确认导入数据？',
+    )
+    if (!ok) return
+    const res = await importData(data as Record<string, unknown>)
+    ui.showToast(`导入完成：${res.imported.join('、')}`)
+    // 刷新受影响的本地状态
+    await Promise.all([
+      library.loadLibraries(),
+      settings.loadSettings(),
+      gallery.loadCategories(),
+      gallery.loadVideos(),
+      album.loadAlbums(),
+    ])
+  } catch {
+    ui.showToast('导入失败：文件不是有效的备份 JSON')
+  }
 }
 
 function close() {
@@ -161,9 +257,15 @@ watch(
         Object.assign(form, settings.settings || {})
         syncPageSizeFromForm()
       })
+      if (tab.value === 'thumbnail') void loadThumbStats()
     }
   },
 )
+
+watch(tab, (t) => {
+  localStorage.setItem(TAB_KEY, t)
+  if (t === 'thumbnail') void loadThumbStats()
+})
 </script>
 
 <template>
@@ -462,6 +564,17 @@ watch(
                   </label>
                 </div>
               </section>
+
+              <section class="settings-block">
+                <h3 class="settings-block-title">维护</h3>
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="settings-field-hint">
+                    缓存占用：{{ thumbStats ? `${formatThumbBytes(thumbStats.bytes)}（${thumbStats.files} 个文件）` : '…' }}
+                  </span>
+                  <button type="button" class="settings-btn" @click="onCleanupThumbs">清理孤立缩略图</button>
+                  <button type="button" class="settings-btn" @click="onRegenerateFailed">重新生成失败的</button>
+                </div>
+              </section>
             </template>
 
             <!-- 其他 -->
@@ -502,6 +615,38 @@ watch(
                       <span class="settings-unit">天</span>
                     </div>
                   </label>
+                  <label class="settings-field">
+                    <span class="settings-field-label">默认排序</span>
+                    <select v-model="form.default_sort" class="settings-input">
+                      <option v-for="opt in GALLERY_SORT_OPTIONS" :key="opt.value" :value="opt.value">
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-block">
+                <h3 class="settings-block-title">文件监听</h3>
+                <label class="settings-field">
+                  <span class="settings-field-label">忽略的目录</span>
+                  <input
+                    v-model="form.watch_ignore_dirs"
+                    type="text"
+                    class="settings-input"
+                    placeholder="如 cache,.git（逗号分隔目录名）"
+                  />
+                  <span class="settings-field-hint">匹配目录名的子目录不扫描、不监听（新增文件不会自动入库）</span>
+                </label>
+              </section>
+
+              <section class="settings-block">
+                <h3 class="settings-block-title">数据备份</h3>
+                <div class="flex flex-wrap items-center gap-3">
+                  <button type="button" class="settings-btn" @click="onExportData">导出数据</button>
+                  <button type="button" class="settings-btn" @click="onPickImportFile">导入数据</button>
+                  <input ref="importFileInput" type="file" accept="application/json,.json" class="hidden" @change="onImportFilePick" />
+                  <span class="settings-field-hint">备份当前库的收藏 / 播放记录 / 专辑 / 分类顺序 + 全局设置，换机迁移用</span>
                 </div>
               </section>
 

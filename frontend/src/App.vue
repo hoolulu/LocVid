@@ -11,6 +11,8 @@ import AlbumPickerDialog from '@/components/dialogs/AlbumPickerDialog.vue'
 import ThumbFailedDialog from '@/components/dialogs/ThumbFailedDialog.vue'
 import ThumbPickerDialog from '@/components/dialogs/ThumbPickerDialog.vue'
 import FolderMoveDialog from '@/components/dialogs/FolderMoveDialog.vue'
+import ConfirmDialog from '@/components/dialogs/ConfirmDialog.vue'
+import VideoPropsDialog from '@/components/dialogs/VideoPropsDialog.vue'
 import ContextMenu from '@/components/layout/ContextMenu.vue'
 import PathTip from '@/components/layout/PathTip.vue'
 import { setupVideoContextActions } from '@/composables/useVideoContextActions'
@@ -127,11 +129,23 @@ function onGlobalKeydown(e: KeyboardEvent) {
   <ThumbFailedDialog />
   <ThumbPickerDialog />
   <FolderMoveDialog />
+  <ConfirmDialog />
+  <VideoPropsDialog />
   <ContextMenu />
   <PathTip />
 
   <div v-if="ui.toast" class="lg-toast">
-    {{ ui.toast.message }}
+    <svg class="lg-toast-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M5 12l4 4L19 6"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+    <span>{{ ui.toast.message }}</span>
   </div>
 
 </template>

@@ -158,18 +158,16 @@ function onKeydown(e: KeyboardEvent) {
       // 整数(十分位)计算避免浮点误差：1.1+0.1 若直接算得 1.2000000000000002，
       // movi 内部会存这个值并原样显示；(tenths±1)/10 得到精确的 1.2
       const tenths = Math.round(roundRate(moviEl.playbackRate) * 10)
-      moviEl.playbackRate = Math.max(0.25, (tenths - 1) / 10)
+      applyRate(moviEl, Math.max(0.25, (tenths - 1) / 10))
     }
   } else if (e.key === 'x' || e.key === 'X') {
     e.preventDefault()
-    if (moviEl && typeof moviEl.playbackRate === 'number') {
-      moviEl.playbackRate = 1
-    }
+    applyRate(moviEl, 1)
   } else if (e.key === 'c' || e.key === 'C') {
     e.preventDefault()
     if (moviEl && typeof moviEl.playbackRate === 'number') {
       const tenths = Math.round(roundRate(moviEl.playbackRate) * 10)
-      moviEl.playbackRate = Math.min(2, (tenths + 1) / 10)
+      applyRate(moviEl, Math.min(2, (tenths + 1) / 10))
     }
   } else if (e.key === ' ') {
     // 空格：播放/暂停
@@ -215,6 +213,24 @@ function onPageHide() {
 // 0.1 步进取整，避免浮点累积误差（1.1+0.1 → 1.2 而非 1.2000000000000002）
 function roundRate(r: number) {
   return Math.round(r * 10) / 10
+}
+
+// 倍速记忆：Z/X/C 调倍速时写入 localStorage，下次播放自动应用（usePlayback onReady 读取）
+const PLAYBACK_RATE_KEY = 'lg-playback-rate'
+function applyRate(
+  el: {
+    playbackRate?: number
+  } | null | undefined,
+  rate: number,
+) {
+  if (el && typeof el.playbackRate === 'number') {
+    el.playbackRate = rate
+    try {
+      localStorage.setItem(PLAYBACK_RATE_KEY, String(rate))
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 // 快进/快退提示：左下角 statusText 显示 1.2 秒后消失（倍速提示由 movi 自带 OSD 负责）

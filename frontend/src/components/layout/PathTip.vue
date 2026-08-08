@@ -138,14 +138,26 @@ function onImgLoad() {
   void nextTick(() => afterLayout(tipRef.value))
 }
 
-// 定位触发（预览开启时只认 previewRatio：占位渲染出真实尺寸后一次定位，避免提前以不完整尺寸定位跳动）：
-// - 预览关闭：visible 即定位（缩略图/文字）
-// - 预览开启：previewRatio 就绪（延迟等占位渲染完成）定位；previewFailed 失败时定位（文字浮层）
-watch(visible, (v) => {
-  if (v && !hoverPreviewEnabled.value) void nextTick(() => afterLayout(tipRef.value))
-})
-watch(previewFailed, (v) => {
-  if (v && visible.value) void nextTick(() => afterLayout(tipRef.value))
+// 后端判定不可预览（previewable===false）：预览永不启动（useHoverPreview 直接跳过），
+// previewRatio/previewFailed 都不会就绪 → 必须主动触发定位，否则浮层永远停在 (-9999,-9999) 屏幕外
+const previewStatic = computed(() => item.value != null && item.value.previewable === false)
+
+// 定位触发：
+// - 预览开启且已启动：previewRatio 就绪（下方单独 watch）→ 定位
+// - 其余"预览区形态立即确定"的场景（缩略图模式 / 不可预览静态提示 / 预览失败回退）：
+//   浮层每次显示或切换视频（item.id 变化）都重新定位——不能只靠值变化触发，
+//   否则快速切换两个 previewable===false 的视频时 previewStatic 恒为 true 不会触发
+watch(
+  () => [visible.value, item.value?.id, previewFailed.value, previewStatic.value],
+  ([v]) => {
+    if (!v) return
+    if (!hoverPreviewEnabled.value || previewStatic.value || previewFailed.value) {
+      void nextTick(() => afterLayout(tipRef.value))
+    }
+  },
+)
+watch(previewRatio, () => {
+  window.setTimeout(() => void nextTick(() => afterLayout(tipRef.value)), 200)
 })
 </script>
 
@@ -179,7 +191,8 @@ watch(previewFailed, (v) => {
       >
         <span v-if="placeholderLoading" class="hover-preview-spinner" />
       </div>
-      <!-- 悬浮预览关闭：回到缩略图展示（仅在设置关闭预览时） -->
+      <!-- 悬浮预览关闭：回到缩略图展示（仅在设置关闭预览时；优先于"不支持预览"提示，
+           用户没开预览时看到的应是缩略图而非提示） -->
       <template v-else-if="!hoverPreviewEnabled">
         <img
           v-if="item.thumbReady || item.thumbVersion"
@@ -190,6 +203,23 @@ watch(previewFailed, (v) => {
         />
         <div v-else class="path-tip-preview--empty">暂无缩略图</div>
       </template>
+      <!-- 预览已确认失败（error / seek 超时）：回退缩略图，避免预览区一片空白 -->
+      <template v-else-if="previewFailed">
+        <img
+          v-if="item.thumbReady || item.thumbVersion"
+          :src="thumbUrl(item.id, item.thumbVersion)"
+          alt=""
+          decoding="async"
+          @load="onImgLoad"
+        />
+        <div v-else class="path-tip-preview--empty">预览不可用</div>
+        <div class="path-tip-preview--fallback">预览失败，点击可直接播放</div>
+      </template>
+      <!-- 后端已判定可播放但不支持悬停预览（伪装TS/MKV/HEVC 等，原生 <video> 解不了）：
+           直接提示，不再尝试预览 -->
+      <div v-else-if="item.previewable === false" class="path-tip-preview--unsupported">
+        此视频可播放，但不支持悬停预览
+      </div>
       <span v-if="item.formatBadge" class="thumb-format-badge">{{ formatBadgeLabel(item.formatBadge) }}</span>
       <span v-if="item.durationSec" class="thumb-duration">{{ formatDuration(item.durationSec) }}</span>
     </div>

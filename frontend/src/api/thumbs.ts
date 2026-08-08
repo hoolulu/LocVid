@@ -38,6 +38,14 @@ export const getThumbFailed = () =>
 export const regenerateFailed = () => api('/thumb/regenerate-failed', { method: 'POST' })
 
 
+export const cleanupOrphans = () =>
+  api<{ removed: number }>('/thumb/cleanup', { method: 'POST' })
+
+
+export const getThumbStats = () =>
+  api<{ files: number; bytes: number }>('/thumb/stats')
+
+
 export const getDurationStatus = () => api<Record<string, unknown>>('/duration/status')
 
 

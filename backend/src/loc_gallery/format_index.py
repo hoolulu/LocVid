@@ -105,6 +105,21 @@ def set_format_kind(
     _schedule_index_flush()
 
 
+def migrate_id(library_id: str, old_id: str, new_id: str) -> None:
+    """格式分类索引从旧 id 迁移到新 id（改名/移动后，避免重新探测）。"""
+    if old_id == new_id:
+        return
+    moved = False
+    with _index_lock:
+        store = _load_index(library_id)
+        if old_id in store:
+            store[new_id] = store.pop(old_id)
+            _index_dirty.add(library_id)
+            moved = True
+    if moved:
+        _schedule_index_flush()
+
+
 def get_format_kind_for_item(
     library_id: str,
     video_id: str,

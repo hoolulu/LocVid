@@ -12,6 +12,8 @@ const gallery = useGalleryStore()
 const player = usePlayerStore()
 
 const loading = ref(false)
+const creating = ref(false)
+const newAlbumName = ref('')
 const checked = reactive<Record<string, boolean>>({})
 const initialChecked = reactive<Record<string, boolean>>({})
 
@@ -42,6 +44,29 @@ function membership(albumId: string) {
 function resetState() {
   for (const key of Object.keys(checked)) delete checked[key]
   for (const key of Object.keys(initialChecked)) delete initialChecked[key]
+  newAlbumName.value = ''
+}
+
+/** 直接新建专辑并把当前选中的视频加入其中 */
+async function createAlbum() {
+  const name = newAlbumName.value.trim()
+  if (!name || creating.value) return
+  creating.value = true
+  try {
+    const created = await album.addAlbum(name)
+    const id = created?.id
+    if (id) {
+      // 新专辑默认勾选（加入当前视频）；initialChecked 留 false，让 confirm 视为"新增归属"，
+      // 由 confirm 统一调 addVideosToAlbum 保证前后端一致（这里不改内存 albumIds）
+      checked[id] = true
+      ui.showToast(`已创建专辑「${name}」`)
+    }
+    newAlbumName.value = ''
+  } catch (err) {
+    ui.showToast(`创建专辑失败: ${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    creating.value = false
+  }
 }
 
 function initCheckboxes() {
@@ -143,10 +168,28 @@ function close() {
       <button type="button" class="rounded px-2 py-1 lg-hover" @click="close">✕</button>
     </div>
     <p class="px-4 pt-3 text-sm text-[var(--lg-text-muted)]">{{ hint }}</p>
+    <div class="flex gap-2 border-b border-[var(--lg-border)] px-4 py-2">
+      <input
+        v-model="newAlbumName"
+        type="text"
+        placeholder="新专辑名称，回车直接创建"
+        class="min-w-0 flex-1 rounded border border-[var(--lg-border)] bg-transparent px-2 py-1 text-sm outline-none focus:border-[var(--lg-accent)]"
+        :disabled="creating"
+        @keydown.enter="createAlbum"
+      />
+      <button
+        type="button"
+        class="shrink-0 rounded border border-[var(--lg-accent)] px-3 py-1 text-sm text-[var(--lg-accent)] disabled:opacity-40"
+        :disabled="!newAlbumName.trim() || creating"
+        @click="createAlbum"
+      >
+        ＋ 新建
+      </button>
+    </div>
     <div class="max-h-64 overflow-y-auto p-3">
       <div v-if="loading" class="py-8 text-center text-sm text-[var(--lg-text-muted)]">加载中…</div>
       <p v-else-if="!album.albums.length" class="py-6 text-center text-sm text-[var(--lg-text-muted)]">
-        还没有专辑，可先在「我的专辑」中新建。
+        还没有专辑，在上方输入名称直接创建。
       </p>
       <label
         v-for="a in album.albums"

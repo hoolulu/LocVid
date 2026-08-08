@@ -37,6 +37,11 @@ export function useBrowseNavigation() {
 
   async function selectCategory(name: string | null) {
     gallery.viewMode = 'browse'
+    // 侧栏已全局显示（收藏/历史/最多播放/专辑等页都有）：非浏览页点分类必须跳回首页，
+    // 否则页面标题与内容错乱（如"我的收藏"标题下显示分类视频）
+    if (router.currentRoute.value.name !== 'browse') {
+      await router.push('/')
+    }
     gallery.setCategory(name)
     if (name) await gallery.loadFolderTree(name)
     await gallery.loadVideos()
@@ -45,6 +50,9 @@ export function useBrowseNavigation() {
 
   async function selectFolder(cat: string, path: string) {
     gallery.viewMode = 'browse'
+    if (router.currentRoute.value.name !== 'browse') {
+      await router.push('/')
+    }
     gallery.setCategory(cat)
     gallery.setFolder(path)
     await gallery.loadVideos()

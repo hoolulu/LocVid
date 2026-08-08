@@ -12,11 +12,17 @@ import { useAlbumStore } from '@/stores/album'
 
 import { useGalleryPlay } from '@/composables/useGalleryPlay'
 
+import { getVideos } from '@/api'
+
 import { useGalleryStore } from '@/stores/gallery'
 
 import { useLibraryStore } from '@/stores/library'
 
+import { useSettingsStore } from '@/stores/settings'
+
 import { useUiStore } from '@/stores/ui'
+
+import CategorySidebar from '@/components/layout/CategorySidebar.vue'
 
 
 
@@ -31,6 +37,8 @@ const library = useLibraryStore()
 const ui = useUiStore()
 
 const { onPlay } = useGalleryPlay()
+
+const settings = useSettingsStore()
 
 
 
@@ -47,6 +55,9 @@ const formDesc = ref('')
 onMounted(async () => {
 
   if (!library.activeLibraryId) await library.loadLibraries()
+
+  // 侧栏全局显示：确保分类已加载（幂等，避免重复请求）
+  if (!gallery.categories.length) await gallery.loadCategories()
 
   await album.loadAlbums()
 
@@ -172,8 +183,9 @@ async function onContextAction(ev: Event) {
 
   } else if (detail.action === 'play-all') {
 
-    router.push(`/albums/${id}`)
-
+    // 全量播放：page_size=0 后端返回专辑全部视频，避免大专辑只播第一页前 40 个
+    const data = await getVideos({ album_id: id, page_size: 0, sort: 'page' })
+    if (!data.items.length) return
     gallery.viewMode = 'album-detail'
 
     gallery.albumId = id
@@ -182,12 +194,12 @@ async function onContextAction(ev: Event) {
 
     await gallery.loadVideos()
 
-    if (gallery.videos.length) await onPlay(gallery.videos[0].id)
+    router.push(`/albums/${id}`)
+    await onPlay(data.items[0].id, data.items)
 
   } else if (detail.action === 'delete') {
-
-    if (confirm('确定删除此专辑？')) await album.removeAlbum(id)
-
+    const ok = await ui.showConfirm(`确定删除专辑「${id}」？专辑内视频文件不会被删除。`, '删除专辑')
+    if (ok) await album.removeAlbum(id)
   }
 
 }
@@ -202,7 +214,9 @@ async function onContextAction(ev: Event) {
 
     <AppHeader />
 
-    <main class="flex-1 overflow-y-auto p-4">
+    <div class="flex min-h-0 flex-1">
+      <CategorySidebar v-if="settings.preset === 'youtube'" />
+      <main class="flex-1 overflow-y-auto p-4">
 
       <div class="mb-4 flex items-center justify-between">
 
@@ -245,6 +259,12 @@ async function onContextAction(ev: Event) {
       </div>
 
 
+
+      <div v-if="!album.albums.length" class="flex flex-col items-center justify-center gap-2 py-20 text-sm text-[var(--lg-text-muted)]">
+        <span class="text-3xl opacity-60">▣</span>
+        <span>还没有专辑</span>
+        <span>点击右上角「新建专辑」，在视频上右键选择「加入专辑」</span>
+      </div>
 
       <div class="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
 
@@ -289,6 +309,7 @@ async function onContextAction(ev: Event) {
       </div>
 
     </main>
+    </div>
 
   </div>
 

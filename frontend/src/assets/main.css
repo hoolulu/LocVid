@@ -47,6 +47,10 @@
   --lg-thumb-overlay-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
   --lg-thumb-placeholder-bg: rgba(0, 0, 0, 0.35);
   --lg-thumb-fav-bg: rgba(0, 0, 0, 0.65);
+  /* 滚动条（暗色下尽量低调：半透明浅色 thumb，轨道透明露出背景） */
+  --lg-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --lg-scrollbar-thumb-hover: rgba(255, 255, 255, 0.26);
+  --lg-scrollbar-track: transparent;
 }
 
 /* ── 亮色模式 ── */
@@ -86,6 +90,34 @@
   --lg-thumb-overlay-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   --lg-thumb-placeholder-bg: rgba(0, 0, 0, 0.06);
   --lg-thumb-fav-bg: rgba(0, 0, 0, 0.55);
+  --lg-scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --lg-scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
+  --lg-scrollbar-track: transparent;
+}
+
+/* ── 滚动条（随主题变量走：暗色下低调半透明，轨道透明露出页面背景） ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lg-scrollbar-thumb) var(--lg-scrollbar-track);
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--lg-scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--lg-scrollbar-thumb);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--lg-scrollbar-thumb-hover);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ── Netflix 预设 ── */
@@ -202,26 +234,37 @@ body {
   padding: 0.5rem 1rem;
   min-height: 3.25rem;
 }
-.app-header-left {
-  justify-self: start;
-  min-width: 0;
-}
-.app-header-logo {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
 .app-header-nav {
   grid-column: 2;
   justify-self: center;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  max-width: 100%;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.app-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding-right: 0.75rem;
+  margin-right: 0.25rem;
+  border-right: 1px solid var(--lg-border);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.app-header-logo-icon {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  color: var(--lg-accent);
+}
+/* 夜晚模式：logo 图标用白色，避免亮色刺眼 */
+[data-theme="dark"] .app-header-logo-icon {
+  color: #fff;
 }
 .app-header-nav-link {
   border-radius: 6px;
@@ -420,23 +463,44 @@ body {
   100% { background-position: -100% 0; }
 }
 
-/* 全局提示（居中） */
+/* 全局提示（页面垂直居中，强调色实底最醒目） */
 .lg-toast {
   position: fixed;
-  top: 1.25rem;
+  top: 50%;
   left: 50%;
   z-index: 300;
-  transform: translateX(-50%);
-  max-width: min(90vw, 28rem);
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  border: 1px solid var(--lg-border);
-  background: var(--lg-bg-elevated);
-  color: var(--lg-text-primary);
-  font-size: 0.875rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(90vw, 30rem);
+  padding: 0.85rem 1.5rem;
+  border-radius: 10px;
+  background: var(--lg-accent);
+  color: var(--lg-text-on-accent);
+  font-size: 1rem;
+  font-weight: 600;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3);
   pointer-events: none;
   text-align: center;
+  animation: lg-toast-in 0.18s ease-out;
+}
+.lg-toast-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+}
+@keyframes lg-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -44%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* 专辑选择器 */
@@ -483,8 +547,10 @@ body {
 /* 卡片四角悬停操作（对齐原项目） */
 .card-fav {
   position: absolute;
-  top: 6px;
+  top: auto;
   left: 6px;
+  bottom: 6px;
+  transform: none;
   z-index: 3;
   width: 26px;
   height: 26px;
@@ -568,6 +634,13 @@ body.manage-mode .card-album-badge,
 body.has-selection .card-album-badge {
   opacity: 1;
 }
+/* 动态排列：♥ 显示时（已收藏 或 悬停 或 批量模式）排第一位，专辑徽章让位到它右边；
+   未收藏时专辑徽章独占最左位置（默认 left:6px 不变） */
+.video-card:has(.card-fav.on) .card-album-badge,
+.video-card:hover .card-album-badge,
+body.manage-mode .card-album-badge {
+  left: 38px;
+}
 .card-album-badge.on {
   color: #60a5fa;
   background: rgba(0, 0, 0, 0.7);
@@ -585,6 +658,30 @@ body.has-selection .card-album-badge {
   font-weight: 600;
   color: var(--lg-text-primary);
   text-align: center;
+}
+/* 搜索结果标题关键词高亮（VideoCard） */
+.card-title mark {
+  color: inherit;
+  background: color-mix(in srgb, var(--lg-accent) 32%, transparent);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+/* 侧栏拖拽占位（vue-draggable-plus/Sortable ghost） */
+.cat-drag-ghost,
+.folder-drag-ghost {
+  opacity: 0.45;
+  background: color-mix(in srgb, var(--lg-accent) 18%, transparent);
+  outline: 1px dashed var(--lg-accent);
+  border-radius: 6px;
+}
+.cat-drag-ghost *,
+.folder-drag-ghost * {
+  pointer-events: none;
+}
+/* 键盘网格导航焦点卡片 */
+.video-card--focused {
+  outline: 2px solid var(--lg-accent);
+  outline-offset: 2px;
 }
 
 /* 分页栏（单行整合） */
@@ -677,6 +774,37 @@ body.has-selection .card-album-badge {
   font-size: 0.85rem;
   padding: 0 4px;
   white-space: nowrap;
+}
+/* 折叠页码条 */
+.page-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.page-num-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 0.8125rem;
+  border-radius: 6px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-bg-secondary);
+  color: var(--lg-text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.page-num-btn:hover {
+  background: var(--lg-bg-hover);
+}
+.page-num-btn.active {
+  background: var(--lg-accent);
+  border-color: var(--lg-accent);
+  color: var(--lg-text-on-accent);
+}
+.page-ellipsis {
+  color: var(--lg-text-muted);
+  padding: 0 2px;
+  user-select: none;
 }
 .page-jump {
   display: flex;
@@ -858,6 +986,45 @@ body.has-selection .card-album-badge {
   font-size: 0.85rem;
   background: var(--lg-bg-secondary);
 }
+/* 预览失败回退：缩略图下方一条提示（弱化，不打断浏览） */
+.path-tip-preview--fallback {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 3;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  color: var(--lg-thumb-overlay-text);
+  background: var(--lg-thumb-overlay-bg);
+  border: 1px solid var(--lg-thumb-overlay-border);
+  text-shadow: var(--lg-thumb-overlay-shadow);
+}
+/* 可播放但不支持悬停预览（伪装TS/MKV/HEVC 等）：预览区位置居中提示 */
+.path-tip-preview--unsupported {
+  width: min(72vw, 768px);
+  height: min(40vh, 432px);
+  max-width: min(88vw, 1104px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--lg-text-secondary);
+  background: var(--lg-bg-secondary);
+  border-radius: 8px 8px 0 0;
+}
+.path-tip-preview--unsupported-icon {
+  font-size: 1.4rem;
+  color: var(--lg-accent);
+  opacity: 0.85;
+}
 .path-tip-body {
   padding: 10px 12px 12px;
   box-sizing: border-box;
@@ -933,6 +1100,16 @@ body.has-selection .card-album-badge {
   justify-content: center;
   padding: 1rem;
   background: rgba(0, 0, 0, 0.55);
+}
+/* 通用确认对话框（替代原生 confirm） */
+.lg-confirm-dialog {
+  width: min(24rem, 92vw);
+  border-radius: 8px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text-primary);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  padding: 16px;
 }
 .thumb-picker-panel {
   width: min(42rem, 92vw);

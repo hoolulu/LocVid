@@ -68,6 +68,26 @@ export const useUiStore = defineStore('ui', () => {
     videoIds?: string[]
   } | null>(null)
 
+  // ── 视频属性面板（右键"属性"）──
+  const videoPropsOpen = ref(false)
+  const videoPropsId = ref<string | null>(null)
+
+  function openVideoProps(videoId: string) {
+    videoPropsId.value = videoId
+    videoPropsOpen.value = true
+    lockModalScroll(true)
+  }
+
+  function closeVideoProps() {
+    videoPropsOpen.value = false
+    videoPropsId.value = null
+    lockModalScroll(false)
+  }
+
+  // ── 通用确认对话框（替代原生 confirm，风格与 UI 一致）──
+  const confirmDialog = ref<{ title: string; message: string } | null>(null)
+  let confirmResolver: ((ok: boolean) => void) | null = null
+
 
 
   const contextMenu = ref<{
@@ -96,9 +116,12 @@ export const useUiStore = defineStore('ui', () => {
 
     const next = new Set(selectedIds.value)
 
-    if (next.has(id)) next.delete(id)
-
-    else {
+    if (next.has(id)) {
+      next.delete(id)
+      // 取消最后一个选中：退出批量模式，恢复默认浏览状态
+      // （否则 manageMode 残留 → body.manage-mode class 不删、卡片点击被拦截为勾选）
+      if (next.size === 0) manageMode.value = false
+    } else {
       next.add(id)
       manageMode.value = true
     }
@@ -275,6 +298,25 @@ export const useUiStore = defineStore('ui', () => {
 
 
 
+  function showConfirm(message: string, title = '确认操作'): Promise<boolean> {
+    confirmDialog.value = { title, message }
+    lockModalScroll(true)
+    return new Promise((resolve) => {
+      confirmResolver = resolve
+    })
+  }
+
+  function resolveConfirm(ok: boolean) {
+    confirmDialog.value = null
+    lockModalScroll(false)
+    if (confirmResolver) {
+      confirmResolver(ok)
+      confirmResolver = null
+    }
+  }
+
+
+
   return {
 
     manageMode,
@@ -310,6 +352,11 @@ export const useUiStore = defineStore('ui', () => {
 
     folderMovePayload,
 
+    videoPropsOpen,
+    videoPropsId,
+
+    confirmDialog,
+
     contextMenu,
 
     selectedCount,
@@ -333,6 +380,12 @@ export const useUiStore = defineStore('ui', () => {
     closeThumbPicker,
     openFolderMove,
     closeFolderMove,
+
+    openVideoProps,
+    closeVideoProps,
+
+    showConfirm,
+    resolveConfirm,
 
     showContextMenu,
 

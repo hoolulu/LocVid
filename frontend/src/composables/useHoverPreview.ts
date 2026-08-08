@@ -184,6 +184,13 @@ export function useHoverPreview() {
 
   function startPreview(videoItem: Video) {
     if (settings.settings?.html5_hover_preview === false) return
+    // 后端已判定该视频无法用原生 <video> 预览（伪装TS/MKV/HEVC 等可播放但不支持预览）：
+    // 直接跳过尝试，避免每次悬停都白等 START_DELAY + 4s 超时才静默失败。
+    // 同时清掉上一个视频残留的 previewFailed，避免浮层误显示"预览失败"。
+    if (videoItem.previewable === false) {
+      previewFailed.value = false
+      return
+    }
     if (activeId === videoItem.id && running) return
     if (pendingStop) {
       clearTimeout(pendingStop)

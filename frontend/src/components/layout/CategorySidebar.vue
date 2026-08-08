@@ -1,10 +1,12 @@
 <script setup lang="ts">
 
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+
+import { VueDraggable } from 'vue-draggable-plus'
 
 import FolderTreeNode from './FolderTreeNode.vue'
 
-import { deleteFolder, renameFolder, reorderCategories, setCategorySortMode } from '@/api/files'
+import { deleteFolder, renameFolder, reorderCategories, reorderFolders, setCategorySortMode } from '@/api/files'
 
 import { useGalleryStore } from '@/stores/gallery'
 import { useBrowseNavigation } from '@/composables/useBrowseNavigation'
@@ -19,13 +21,28 @@ const { selectCategory, selectFolder } = useBrowseNavigation()
 
 
 
-const categorySortMode = ref('custom')
-
-const dragFrom = ref<string | null>(null)
-
-
-
 const totalCount = computed(() => gallery.categories.reduce((s, c) => s + c.count, 0))
+
+// ── 分类/文件夹搜索过滤 ──
+const sidebarQuery = ref('')
+
+const filteredCategories = computed(() => {
+  const q = sidebarQuery.value.trim().toLowerCase()
+  if (!q) return gallery.categories
+  return gallery.categories.filter((c) => c.name.toLowerCase().includes(q))
+})
+
+// 输入搜索时自动展开匹配分类并加载其文件夹树（否则树数据未加载，子文件夹无法参与过滤）
+watch(sidebarQuery, (q) => {
+  const query = q.trim().toLowerCase()
+  if (!query) return
+  for (const cat of gallery.categories) {
+    if (cat.name.toLowerCase().includes(query)) {
+      gallery.expandedCategories.add(cat.name)
+      if (cat.has_subfolders) void gallery.loadFolderTree(cat.name)
+    }
+  }
+})
 
 
 
@@ -69,48 +86,33 @@ async function onSortModeChange(e: Event) {
 
   const mode = (e.target as HTMLSelectElement).value
 
-  categorySortMode.value = mode
-
   await setCategorySortMode(mode)
 
+  gallery.categorySortMode = mode
+
   await gallery.loadCategories()
 
 }
 
 
 
-function onDragStart(name: string) {
-
-  if (categorySortMode.value !== 'custom') return
-
-  dragFrom.value = name
-
-}
-
-
-
-async function onDrop(target: string) {
-
-  if (!dragFrom.value || dragFrom.value === target) return
-
+// ── 分类拖拽排序（vue-draggable-plus/Sortable）：handle 把手触发，仅 custom 模式可用 ──
+async function onCategoryDragEnd() {
   const order = gallery.categories.map((c) => c.name)
-
-  const fromIdx = order.indexOf(dragFrom.value)
-
-  const toIdx = order.indexOf(target)
-
-  if (fromIdx < 0 || toIdx < 0) return
-
-  order.splice(fromIdx, 1)
-
-  order.splice(toIdx, 0, dragFrom.value)
-
-  dragFrom.value = null
-
   await reorderCategories(order)
-
   await gallery.loadCategories()
+}
 
+// ── 文件夹拖拽排序：FolderTreeNode 各层/分类根层提交该层路径顺序 ──
+async function onFolderReorder(category: string, parent: string, paths: string[]) {
+  if (!paths.length) return
+  await reorderFolders(category, { [parent]: paths })
+  gallery.clearFolderCaches()
+  if (gallery.category) await gallery.loadFolderTree(gallery.category)
+}
+
+function onRootFolderDragEnd(category: string, roots: { path: string }[]) {
+  if (roots.length > 1) void onFolderReorder(category, '', roots.map((n) => n.path))
 }
 
 
@@ -184,21 +186,20 @@ async function onContextAction(ev: Event) {
     ui.openFolderMove({ mode: 'folder', category, path, folderType })
   } else if (detail.action === 'folder-delete') {
 
-    if (confirm(`确定删除文件夹「${path}」及其所有视频？`)) {
+    const ok = await ui.showConfirm(`删除后文件夹内的视频会移入回收站，且无法在库中恢复。`, `确定删除文件夹「${path}」及其所有视频？`)
+    if (!ok) return
 
-      await deleteFolder(category, path, folderType)
+    await deleteFolder(category, path, folderType)
 
-      gallery.clearFolderCaches()
+    gallery.clearFolderCaches()
 
-      if (gallery.folder === path) gallery.setFolder(null)
+    if (gallery.folder === path) gallery.setFolder(null)
 
-      await gallery.loadCategories()
+    await gallery.loadCategories()
 
-      await gallery.loadVideos()
+    await gallery.loadVideos()
 
-      ui.showToast('已删除')
-
-    }
+    ui.showToast('已删除')
 
   }
 
@@ -236,7 +237,7 @@ onUnmounted(() => {
 
         class="rounded border border-[var(--lg-border)] bg-transparent px-1 py-0.5 text-[10px]"
 
-        :value="categorySortMode"
+        :value="gallery.categorySortMode"
 
         @change="onSortModeChange"
 
@@ -248,42 +249,59 @@ onUnmounted(() => {
 
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto p-2" data-testid="category-list">
+    <div class="border-b border-[var(--lg-border)] px-2 py-1.5">
 
-      <button
+      <input
 
-        class="mb-1 flex w-full items-center justify-between rounded px-2 py-2 text-left text-sm transition lg-hover"
-        :class="{ 'lg-active': !gallery.category }"
+        v-model="sidebarQuery"
 
-        @click="selectCategory(null)"
+        type="search"
 
+        placeholder="过滤分类 / 文件夹…"
+
+        class="w-full rounded border border-[var(--lg-border)] bg-transparent px-2 py-1 text-xs outline-none focus:border-[var(--lg-accent)]"
+
+      />
+
+    </div>
+
+      <VueDraggable
+        :list="gallery.categories"
+        :handle="'.cat-drag-handle'"
+        :disabled="gallery.categorySortMode !== 'custom' || !!sidebarQuery.trim()"
+        animation="150"
+        ghost-class="cat-drag-ghost"
+        class="min-h-0 flex-1 overflow-y-auto p-2"
+        data-testid="category-list"
+        @end="onCategoryDragEnd"
       >
 
-        <span>全部</span>
+        <button
 
-        <span class="text-xs text-[var(--lg-text-muted)]">{{ totalCount }}</span>
+          class="mb-1 flex w-full items-center justify-between rounded px-2 py-2 text-left text-sm transition lg-hover"
+          :class="{ 'lg-active': !gallery.category }"
 
-      </button>
+          @click="selectCategory(null)"
+
+        >
+
+          <span>全部</span>
+
+          <span class="text-xs text-[var(--lg-text-muted)]">{{ totalCount }}</span>
+
+        </button>
 
 
 
-      <div
+        <div
 
-        v-for="cat in gallery.categories"
+          v-for="cat in filteredCategories"
 
-        :key="cat.name"
+          :key="cat.name"
 
-        class="mb-1"
+          class="mb-1"
 
-        :draggable="categorySortMode === 'custom'"
-
-        @dragstart="onDragStart(cat.name)"
-
-        @dragover.prevent
-
-        @drop="onDrop(cat.name)"
-
-      >
+        >
 
         <button
 
@@ -309,7 +327,7 @@ onUnmounted(() => {
 
             >▶</span>
 
-            <span v-if="categorySortMode === 'custom'" class="cursor-grab text-[var(--lg-text-muted)]">⋮⋮</span>
+            <span v-if="gallery.categorySortMode === 'custom'" class="cat-drag-handle cursor-grab text-[var(--lg-text-muted)]">⋮⋮</span>
 
             <span class="truncate">{{ cat.name }}</span>
 
@@ -329,29 +347,42 @@ onUnmounted(() => {
 
         >
 
-          <FolderTreeNode
+          <VueDraggable
+            :list="folderTree(cat.name)"
+            :handle="'.folder-drag-handle'"
+            :disabled="!!sidebarQuery.trim()"
+            animation="150"
+            ghost-class="folder-drag-ghost"
+            @end="onRootFolderDragEnd(cat.name, folderTree(cat.name))"
+          >
+            <FolderTreeNode
 
-            v-for="node in folderTree(cat.name)"
+              v-for="node in folderTree(cat.name)"
 
-            :key="node.path"
+              :key="node.path"
 
-            :node="node"
+              :node="node"
 
-            :category="cat.name"
+              :category="cat.name"
 
-            :depth="0"
+              :depth="0"
 
-            @select="selectFolder"
+              :filter-query="sidebarQuery.trim()"
 
-            @contextmenu="onFolderContext"
+              @select="selectFolder"
 
-          />
+              @contextmenu="onFolderContext"
+
+              @reorder="onFolderReorder"
+
+            />
+          </VueDraggable>
 
         </div>
 
       </div>
 
-    </div>
+    </VueDraggable>
 
   </aside>
 

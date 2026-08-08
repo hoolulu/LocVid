@@ -63,17 +63,26 @@ function onGlobalClick() {
   ui.hideContextMenu()
 }
 
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && ui.contextMenu) {
+    e.preventDefault()
+    ui.hideContextMenu()
+  }
+}
+
 function onViewportChange() {
   if (ui.contextMenu) void updateMenuPosition()
 }
 
 onMounted(() => {
   document.addEventListener('click', onGlobalClick)
+  document.addEventListener('keydown', onGlobalKeydown)
   window.addEventListener('resize', onViewportChange)
   window.addEventListener('scroll', onViewportChange, true)
 })
 onUnmounted(() => {
   document.removeEventListener('click', onGlobalClick)
+  document.removeEventListener('keydown', onGlobalKeydown)
   window.removeEventListener('resize', onViewportChange)
   window.removeEventListener('scroll', onViewportChange, true)
 })

@@ -190,6 +190,16 @@ export function usePlayback() {
           player.volume = 1
           player.muted = false
           player.hideOverlay()
+          // 应用记忆的倍速（播放页 Z/X/C 调节后持久化，刷新/切视频保留）
+          try {
+            const savedRate = Number(localStorage.getItem('lg-playback-rate'))
+            if (Number.isFinite(savedRate) && savedRate > 0) {
+              const el = mp.getElement() as unknown as { playbackRate?: number } | null
+              if (el && typeof el.playbackRate === 'number') el.playbackRate = savedRate
+            }
+          } catch {
+            /* ignore */
+          }
           // 当前为 ready 但还没播放时显式播放；已 playing 则跳过（避免重复 play 报错）
           if (mp.getPaused()) void mp.play()
           if (resumeAt > 0) {

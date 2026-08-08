@@ -46,7 +46,7 @@ def _static_cache_control(relative_path: str) -> str | None:
         return "public, max-age=86400"
     return None
 
-from loc_gallery.category_store import get_meta, set_order, set_sort_mode, set_starred, sort_categories
+from loc_gallery.category_store import get_meta, import_category_meta, set_folder_order, set_order, set_sort_mode, set_starred, sort_categories
 from loc_gallery.config import HOST, PORT, EXTERNAL_PLAYER_CANDIDATES, EXTERNAL_PLAYER_PATH, VIDEO_EXTENSIONS, WEB_ROOT
 from loc_gallery.range_stream import stream_file_with_disconnect
 
@@ -80,10 +80,13 @@ def _launch_external_player(player: Path, video_path: str) -> None:
 from loc_gallery.file_stability import is_incomplete_filename, notify_file_activity, set_stable_callback
 from loc_gallery.favorite_store import (
     batch_favorites,
+    clear_favorites,
+    export_favorites,
     get_added_at,
     get_favorite_count,
     get_favorite_ids,
     get_favorites_map,
+    import_favorites,
     is_favorite,
     list_favorite_ids_sorted,
     prune_missing as prune_favorites,
@@ -94,9 +97,11 @@ from loc_gallery.album_store import (
     add_videos as album_add_videos,
     create_album,
     delete_album,
+    export_albums,
     get_album,
     get_album_ids_for_video,
     get_album_map_for_videos,
+    import_albums,
     list_albums,
     list_album_video_ids_sorted,
     prune_missing as prune_albums,
@@ -110,10 +115,13 @@ from loc_gallery.album_store import (
 from loc_gallery.file_ops import delete_videos, move_videos, rename_video
 from loc_gallery.history_store import (
     clear_history,
+    export_history,
     get_entry as get_history_entry,
     get_history_count,
     get_history_map,
+    import_history,
     list_history_ids_sorted,
+    prune_expired,
     prune_missing as prune_history,
     record_play,
     remove_history,
@@ -135,6 +143,7 @@ from loc_gallery.media_probe import (
     get_format_badge_for_item,
     get_format_badges,
     get_playback_plan,
+    get_previewable_for_item,
 )
 from loc_gallery.remux_manager import (
     begin_remux_batch,
@@ -184,6 +193,7 @@ from loc_gallery.thumb_manager import (
     enqueue_missing_durations,
     backfill_durations_from_history,
     batch_regenerate_with_candidates,
+    enqueue_batch_regenerate,
     start_duration_probe_background,
     get_worker_health,
     init_manager,
@@ -244,6 +254,11 @@ class CategoryReorderRequest(BaseModel):
 
 class CategorySortRequest(BaseModel):
     sort_mode: str
+
+
+class FolderReorderRequest(BaseModel):
+    category: str
+    order: dict[str, list[str]]  # {父路径: [子路径...]}，父路径 "" 表示分类根层
 
 
 class FavoriteToggleRequest(BaseModel):
@@ -392,6 +407,40 @@ def _on_library_changed(library_id: str) -> None:
     _broadcast("progress", library_id)
 
 
+# ── watchdog 事件合并：目录批量操作（整目录拖入/复制）会触发大量文件事件，
+#    每个 deleted/变更事件都全库刷新是 O(n²)。合并为 1.5s 内一次刷新。──
+_refresh_timers: dict[str, threading.Timer] = {}
+_refresh_timers_lock = threading.Lock()
+_REFRESH_DEBOUNCE_SEC = 1.5
+
+
+def _schedule_library_refresh(library_id: str) -> None:
+    """安排一次合并后的全库刷新（watchdog 删除/目录变更事件用）。"""
+    with _refresh_timers_lock:
+        timer = _refresh_timers.get(library_id)
+        if timer is not None:
+            timer.cancel()
+        timer = threading.Timer(
+            _REFRESH_DEBOUNCE_SEC, _run_library_refresh, args=(library_id,),
+        )
+        timer.daemon = True
+        _refresh_timers[library_id] = timer
+        timer.start()
+
+
+def _run_library_refresh(library_id: str) -> None:
+    with _refresh_timers_lock:
+        _refresh_timers.pop(library_id, None)
+    _on_library_changed(library_id)
+
+
+def _cancel_refresh_timers() -> None:
+    with _refresh_timers_lock:
+        for timer in _refresh_timers.values():
+            timer.cancel()
+        _refresh_timers.clear()
+
+
 def _on_video_stable(library_id: str, path: Path) -> None:
     """单个文件写入稳定后增量入库（新下载完成）。"""
     set_thread_library(library_id)
@@ -432,8 +481,14 @@ class _ChangeHandler(FileSystemEventHandler):
             return
         if path.suffix.lower() not in VIDEO_EXTENSIONS:
             return
+        # 用户配置的忽略目录（watch_ignore_dirs）：整目录不监听
+        from loc_gallery.scanner import _should_skip_watch_dir
+        if _should_skip_watch_dir(path.parent, self.library_id):
+            return
         if event_type == "deleted":
-            _on_library_changed(self.library_id)
+            # 合并刷新：删除常伴随移动/重命名（先删后增），立即全扫会浪费，
+            # 且目录批量删除会触发大量事件
+            _schedule_library_refresh(self.library_id)
             return
         set_thread_library(self.library_id)
         notify_file_activity(path, self.library_id)
@@ -505,11 +560,29 @@ async def lifespan(app: FastAPI):
                 continue
             set_thread_library(lib.id)
             _prune_user_data(lib.id)
+        # 物理清理过期历史（读取时过滤只影响展示，文件只增不缩，需落盘删除）
+        for lib in list_libraries():
+            try:
+                prune_expired(lib.id)
+            except Exception:
+                pass
         complete_startup_sync()
         for lib in list_libraries():
           start_format_index_background(lib.id)
 
     threading.Thread(target=_startup_background, daemon=True, name="startup-bg").start()
+
+    def _prune_history_periodic() -> None:
+        """每日物理清理各库过期历史条目（启动时已清一次，这里兜底长期运行场景）。"""
+        while True:
+            time.sleep(86400)
+            for lib in list_libraries():
+                try:
+                    prune_expired(lib.id)
+                except Exception:
+                    pass
+
+    threading.Thread(target=_prune_history_periodic, daemon=True, name="history-prune").start()
 
     yield
 
@@ -517,6 +590,7 @@ async def lifespan(app: FastAPI):
     stop_auto_remux_worker()
     shutdown_format_index()
     shutdown_manager()
+    _cancel_refresh_timers()
     _stop_watchers()
 
 
@@ -592,6 +666,9 @@ def _video_to_dict(library_id: str, v, *, album_ids: list[str] | None = None) ->
         "formatBadge": get_format_badge_for_item(
             library_id, v.id, v.mtime, v.size, Path(v.path),
         ),
+        "previewable": get_previewable_for_item(
+            library_id, v.id, v.mtime, v.size, Path(v.path),
+        ),
     }
 
 
@@ -647,6 +724,9 @@ def _videos_to_dicts(
             "formatBadge": get_format_badge_for_item(
                 library_id, v.id, v.mtime, v.size, Path(v.path),
             ),
+            "previewable": get_previewable_for_item(
+                library_id, v.id, v.mtime, v.size, Path(v.path),
+            ),
         })
     return out
 
@@ -689,12 +769,7 @@ def _filter_videos_list(
     if favorites or history or album_id:
         if q:
             query = q.lower().strip()
-            items = [
-                v for v in items
-                if query in v.title.lower()
-                or query in v.filename.lower()
-                or query in v.category.lower()
-            ]
+            items = [v for v in items if _search_match(v, query)]
 
     if format and format not in ("", "all"):
         items = filter_items_by_format(items, format, library_id)
@@ -758,9 +833,12 @@ def _get_filtered_video_ids(
         format=format,
     )
     ver = get_version(library_id)
-    hit = _filter_ids_cache.get(key)
-    if hit and hit[0] == ver:
-        return hit[1]
+    # playcount 排序依赖播放历史，播放次数变化不会 bump 扫描 version（缓存无法失效）→ 不走缓存
+    playcount_sort = sort in ("playcount_desc", "playcount_asc")
+    if not playcount_sort:
+        hit = _filter_ids_cache.get(key)
+        if hit and hit[0] == ver:
+            return hit[1]
 
     ids: list[str] | None = None
     if not favorites and not history and not album_id and not q:
@@ -813,12 +891,29 @@ def _get_filtered_video_ids(
         fmt_items = [v for vid in ids if (v := get_by_id(library_id, vid))]
         ids = [v.id for v in filter_items_by_format(fmt_items, format, library_id)]
 
-    _filter_ids_cache[key] = (ver, ids)
+    if not playcount_sort:
+        _filter_ids_cache[key] = (ver, ids)
 
-    stale = [k for k, (cached_ver, _) in _filter_ids_cache.items() if k[0] == library_id and cached_ver != ver]
-    for k in stale:
-        _filter_ids_cache.pop(k, None)
+        stale = [k for k, (cached_ver, _) in _filter_ids_cache.items() if k[0] == library_id and cached_ver != ver]
+        for k in stale:
+            _filter_ids_cache.pop(k, None)
     return ids
+
+
+def _search_match(v, query: str) -> bool:
+    """搜索匹配：标题/分类/子文件夹/文件名（含去扩展名 stem），
+    让"在分类里搜路径关键字"也能命中。"""
+    if query in v.title.lower():
+        return True
+    if query in v.category.lower():
+        return True
+    if query in v.subfolder.lower():
+        return True
+    fn = v.filename.lower()
+    if query in fn:
+        return True
+    stem = fn.rsplit(".", 1)[0] if "." in fn else fn
+    return query in stem
 
 
 def _filter_videos(
@@ -836,16 +931,20 @@ def _filter_videos(
             items = [v for v in items if v.subfolder == folder or v.subfolder.startswith(folder + "/")]
     if q:
         query = q.lower().strip()
-        items = [
-            v for v in items
-            if query in v.title.lower()
-            or query in v.filename.lower()
-            or query in v.category.lower()
-        ]
+        items = [v for v in items if _search_match(v, query)]
 
     if sort == "random":
         rng = random.Random(seed) if seed is not None else random
         rng.shuffle(items)
+        return items
+
+    if sort in ("playcount_desc", "playcount_asc"):
+        # 按播放次数排序：批量读历史 map（含 play_count），未播过按 0 处理
+        hist_map = get_history_map(library_id)
+        items.sort(
+            key=lambda v: int((hist_map.get(v.id) or {}).get("play_count", 0)),
+            reverse=(sort == "playcount_desc"),
+        )
         return items
 
     sort_key = {
@@ -986,6 +1085,15 @@ async def api_folders(category: str, library_id: str = Depends(resolve_library_i
     return get_folder_tree(library_id, category)
 
 
+@app.post("/api/folders/reorder")
+async def api_folders_reorder(req: FolderReorderRequest, library_id: str = Depends(resolve_library_id)):
+    """保存分类内文件夹自定义顺序（拖拽排序）。"""
+    if not req.category:
+        raise HTTPException(400, "需要指定分类")
+    set_folder_order(library_id, req.category, req.order)
+    return {"ok": True, **get_folder_tree(library_id, req.category)}
+
+
 def _do_rescan(library_id: str) -> None:
     refresh_cache(library_id)
     reconcile_deferred_thumbs()
@@ -1114,6 +1222,30 @@ async def api_folders_move(
     refresh_cache(library_id)
     _schedule_rescan(library_id)
     return {"ok": True, "moved": True}
+
+
+@app.get("/api/search/suggest")
+async def api_search_suggest(
+    q: str = "",
+    limit: int = 10,
+    library_id: str = Depends(resolve_library_id),
+):
+    """搜索建议：标题前缀优先、其次子串，内存索引直接扫（无额外开销）。"""
+    query = q.lower().strip()
+    if not query or limit <= 0:
+        return {"items": []}
+    prefix: list[str] = []
+    substr: list[str] = []
+    seen: set[str] = set()
+    for v in get_all(library_id):
+        t = v.title
+        tl = t.lower()
+        if query in tl and t not in seen:
+            seen.add(t)
+            (prefix if tl.startswith(query) else substr).append(t)
+        if len(prefix) >= limit and len(substr) >= limit:
+            break
+    return {"items": (prefix + substr)[:limit]}
 
 
 @app.get("/api/videos")
@@ -1249,6 +1381,35 @@ async def api_video_item(video_id: str, library_id: str = Depends(resolve_librar
     return _video_to_dict(library_id, item)
 
 
+@app.get("/api/videos/{video_id}/props")
+async def api_video_props(video_id: str, library_id: str = Depends(resolve_library_id)):
+    """视频属性：文件信息 + 播放计划关键字段 + 用户数据（右键"属性"面板用）。"""
+    item = get_by_id(library_id, video_id)
+    if not item:
+        raise HTTPException(404, "视频不存在")
+    plan = await _playback_plan(Path(item.path))
+    duration = get_video_duration_sec(item.id, mtime=item.mtime, size=item.size)
+    hist = (get_history_map(library_id) or {}).get(video_id) or {}
+    return {
+        "id": video_id,
+        "title": item.title,
+        "filename": item.filename,
+        "path": item.path,
+        "category": item.category,
+        "subfolder": item.subfolder or None,
+        "size": item.size,
+        "mtime": item.mtime,
+        "duration_sec": duration,
+        "codec": plan.get("codec"),
+        "container": plan.get("container"),
+        "mode": plan.get("mode"),
+        "formatBadge": get_format_badge_for_item(library_id, video_id, item.mtime, item.size),
+        "playCount": int(hist.get("play_count") or 0),
+        "playedAt": hist.get("played_at"),
+        "favorited": is_favorite(library_id, video_id),
+    }
+
+
 @app.get("/api/favorites/summary")
 async def api_favorites_summary(library_id: str = Depends(resolve_library_id)):
     return {"count": get_favorite_count(library_id)}
@@ -1278,6 +1439,55 @@ async def api_favorites_batch(req: FavoriteBatchRequest, library_id: str = Depen
     return {"ok": True, **result}
 
 
+@app.post("/api/favorites/clear")
+async def api_favorites_clear(library_id: str = Depends(resolve_library_id)):
+    removed = clear_favorites(library_id)
+    return {"ok": True, "removed": removed, "count": 0}
+
+
+@app.get("/api/data/export")
+async def api_data_export(library_id: str = Depends(resolve_library_id)):
+    """导出用户数据（收藏/历史/专辑/分类元数据/全局设置），备份与迁移用。"""
+    return {
+        "version": 1,
+        "exported_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "library_id": library_id,
+        "favorites": export_favorites(library_id),
+        "history": export_history(library_id),
+        "albums": export_albums(library_id),
+        "category_meta": get_meta(library_id),
+        "settings": load_settings(None),
+    }
+
+
+@app.post("/api/data/import")
+async def api_data_import(req: Request, library_id: str = Depends(resolve_library_id)):
+    """导入用户数据：覆盖当前库的收藏/历史/专辑/分类元数据，合并全局设置。"""
+    try:
+        payload = await req.json()
+    except Exception:
+        raise HTTPException(400, "请求体不是有效 JSON")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "数据格式无效")
+    imported: list[str] = []
+    if isinstance(payload.get("favorites"), dict):
+        import_favorites(library_id, payload["favorites"])
+        imported.append("favorites")
+    if isinstance(payload.get("history"), dict):
+        import_history(library_id, payload["history"])
+        imported.append("history")
+    if isinstance(payload.get("albums"), dict):
+        import_albums(library_id, payload["albums"])
+        imported.append("albums")
+    if isinstance(payload.get("category_meta"), dict):
+        import_category_meta(library_id, payload["category_meta"])
+        imported.append("category_meta")
+    if isinstance(payload.get("settings"), dict):
+        save_settings(payload["settings"], None)
+        imported.append("settings")
+    return {"ok": True, "imported": imported}
+
+
 @app.get("/api/albums")
 async def api_albums_list(library_id: str = Depends(resolve_library_id)):
     return {"items": list_albums(library_id)}
@@ -1297,14 +1507,8 @@ async def api_albums_get(album_id: str, library_id: str = Depends(resolve_librar
     album = get_album(library_id, album_id)
     if not album:
         raise HTTPException(404, "专辑不存在")
-    total_dur = 0.0
-    for vid in album.get("video_ids") or []:
-        item = get_by_id(library_id, vid)
-        if not item:
-            continue
-        d = get_video_duration_sec(vid, mtime=item.mtime, size=item.size)
-        if d:
-            total_dur += d
+    # 批量读时长（get_durations_for_ids 为原有批量实现：library_id + video_ids）
+    total_dur = sum(get_durations_for_ids(library_id, album.get("video_ids") or []).values())
     album["total_duration_sec"] = round(total_dur, 1)
     return album
 
@@ -1613,7 +1817,9 @@ async def api_videos_rename(req: RenameRequest, library_id: str = Depends(resolv
     old_id = req.id
     try:
         item = rename_video(library_id, old_id, req.new_name)
-        _after_file_change(library_id, [old_id])
+        # 用户数据/缩略图迁移已在 file_ops.rename_video 内完成（refresh_cache 之前，防 watchdog prune 竞态）；
+        # _after_file_change 不传 old_ids，避免删除旧 id 的收藏/历史/专辑
+        _after_file_change(library_id)
         # 强制同步 probe 格式，跳过稳定性检查，使筛选立即生效
         from pathlib import Path
         p = Path(item.path)
@@ -1644,8 +1850,8 @@ async def api_videos_move(req: MoveRequest, library_id: str = Depends(resolve_li
         raise HTTPException(400, "未指定目标分类")
     result = move_videos(library_id, req.ids, req.category)
     if result["moved"]:
-        old_ids = [m["old_id"] for m in result["moved"]]
-        _after_file_change(library_id, old_ids)
+        # 用户数据/缩略图迁移已在 file_ops.move_videos 内完成；不传 old_ids，避免删除重建
+        _after_file_change(library_id)
     return result
 
 
@@ -1720,8 +1926,9 @@ async def api_thumb_batch_regenerate(
     req: PriorityRequest,
     library_id: str = Depends(resolve_library_id),
 ):
-    count, versions = batch_regenerate_with_candidates(req.ids, auto_select=req.auto_select)
-    return {"regenerated": count, "versions": versions}
+    # 异步化：大批量重生成跑 ffmpeg 很慢，入队由后台 worker 逐个执行，接口立即返回
+    queued = enqueue_batch_regenerate(req.ids, auto_select=req.auto_select)
+    return {"queued": queued, "async": True}
 
 
 @app.post("/api/thumb/pause")
@@ -1741,6 +1948,25 @@ async def api_thumb_cleanup(library_id: str = Depends(resolve_library_id)):
     removed = cleanup_orphans()
     sync_index_with_videos()
     return {"removed": removed}
+
+
+@app.get("/api/thumb/stats")
+async def api_thumb_stats(library_id: str = Depends(resolve_library_id)):
+    """缩略图缓存占用统计（设置页维护入口用）。"""
+    from loc_gallery.config import thumb_dir
+    tdir = thumb_dir(library_id)
+    files = 0
+    total = 0
+    if tdir.exists():
+        for p in tdir.rglob("*"):
+            if not p.is_file():
+                continue
+            files += 1
+            try:
+                total += p.stat().st_size
+            except OSError:
+                pass
+    return {"files": files, "bytes": total}
 
 
 @app.post("/api/thumb/{video_id}/candidates")

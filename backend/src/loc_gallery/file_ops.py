@@ -21,6 +21,36 @@ def _video_root(library_id: str) -> Path:
     return lib.path_obj.resolve()
 
 
+def _migrate_video_id(library_id: str, old_id: str, new_path: Path) -> str | None:
+    """改名/移动导致视频 id（相对路径 md5）变化：把收藏/历史/专辑归属与缩略图/格式缓存
+    从旧 id 迁移到新 id。
+
+    ⚠️ 必须在 refresh_cache 之前调用（毫秒级）：watchdog 收到删除事件 1.5s 后会全库
+    prune 旧 id 的收藏/历史/专辑，而 refresh_cache 全量重扫可能超过 1.5s——若迁移放在
+    refresh 之后，会被 watchdog 的 prune 抢先删掉旧 id 数据，迁移时已无数据可搬
+    （改名丢收藏/专辑的竞态根因）。返回新 id。"""
+    from loc_gallery.scanner import _make_id
+    root = _video_root(library_id)
+    try:
+        new_rel = new_path.relative_to(root).as_posix()
+    except ValueError:
+        return old_id
+    new_id = _make_id(new_rel)
+    if new_id == old_id:
+        return new_id
+    from loc_gallery.favorite_store import migrate_id as _mf
+    from loc_gallery.history_store import migrate_id as _mh
+    from loc_gallery.album_store import migrate_video_id as _ma
+    from loc_gallery.thumb_manager import migrate_thumb_id as _mt
+    from loc_gallery.format_index import migrate_id as _mfi
+    _mf(library_id, old_id, new_id)
+    _mh(library_id, old_id, new_id)
+    _ma(library_id, old_id, new_id)
+    _mt(library_id, old_id, new_id)
+    _mfi(library_id, old_id, new_id)
+    return new_id
+
+
 def _resolve_under_root(library_id: str, path: Path) -> Path:
     root = _video_root(library_id)
     resolved = path.resolve()
@@ -145,6 +175,8 @@ def rename_video(library_id: str, video_id: str, new_name: str) -> VideoItem:
         raise ValueError("同名文件已存在")
 
     old_path.rename(new_path)
+    # 先迁移用户数据/缩略图/格式缓存（refresh_cache 前，防 watchdog prune 竞态），再刷新索引
+    _migrate_video_id(library_id, item.id, new_path)
     refresh_cache(library_id)
 
     for v in get_all(library_id):
@@ -188,6 +220,8 @@ def move_videos(library_id: str, video_ids: list[str], category: str) -> dict:
                 continue
 
             shutil.move(str(src), str(dest))
+            # 先迁移用户数据/缩略图/格式缓存（refresh_cache 前，防 watchdog prune 竞态）
+            _migrate_video_id(library_id, vid, dest)
             refresh_cache(library_id)
 
             new_item = next((v for v in get_all(library_id) if v.path == str(dest)), None)

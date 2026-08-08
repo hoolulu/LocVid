@@ -27,7 +27,35 @@ def _load_raw(library_id: str) -> dict:
 def _save_raw(library_id: str, data: dict) -> None:
     path = history_file(library_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 原子写：先写临时文件再 replace，避免进程中断时截断 JSON（与缩略图索引一致）
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def export_history(library_id: str) -> dict:
+    """导出播放记录全量数据（备份/迁移用）。"""
+    with _lock:
+        return _load_raw(library_id)
+
+
+def import_history(library_id: str, data: dict) -> None:
+    """导入播放记录全量数据（覆盖当前）。"""
+    items = dict((data or {}).get("items") or {})
+    with _lock:
+        _save_raw(library_id, {"items": items})
+
+
+def migrate_id(library_id: str, old_id: str, new_id: str) -> None:
+    """改名/移动后播放记录从旧 id 迁移到新 id（保留次数/进度/最近播放）。"""
+    if old_id == new_id:
+        return
+    with _lock:
+        data = _load_raw(library_id)
+        items = data.get("items") or {}
+        if old_id in items:
+            items[new_id] = items.pop(old_id)
+            _save_raw(library_id, data)
 
 
 def retention_days(library_id: str) -> int:
@@ -109,6 +137,23 @@ def clear_history(library_id: str) -> int:
         data["items"] = {}
         _save_raw(library_id, data)
         return count
+
+
+def prune_expired(library_id: str) -> int:
+    """物理删除超过保留期的历史条目（读取时过滤只影响展示，文件会只增不缩）。"""
+    cutoff = _cutoff_ts(library_id)
+    with _lock:
+        data = _load_raw(library_id)
+        items = data.get("items") or {}
+        before = len(items)
+        data["items"] = {
+            k: v for k, v in items.items()
+            if float(v.get("played_at", 0)) >= cutoff
+        }
+        removed = before - len(data["items"])
+        if removed:
+            _save_raw(library_id, data)
+        return removed
 
 
 def remove_history(library_id: str, video_ids: list[str]) -> None:

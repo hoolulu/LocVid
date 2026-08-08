@@ -2,9 +2,7 @@
 
 import { computed } from 'vue'
 
-import { batchFavorites, beginBatchRemux, deleteVideos, endBatchRemux } from '@/api/files'
-
-import { getPlayInfo, startRemux, getRemuxStatus } from '@/api/play'
+import { batchFavorites, deleteVideos } from '@/api/files'
 
 import { batchRegenerateThumb } from '@/api/thumbs'
 import { openThumbPicker } from '@/composables/useThumbPicker'
@@ -39,7 +37,8 @@ async function onSelectAll() {
 
 async function onDelete() {
 
-  if (!confirm(`确定删除 ${ids.value.length} 个视频？`)) return
+  const ok = await ui.showConfirm(`删除后视频会移入回收站，收藏/历史/专辑记录会一并移除。`, `确定删除 ${ids.value.length} 个视频？`)
+  if (!ok) return
 
   await deleteVideos(ids.value)
 
@@ -104,84 +103,6 @@ async function onBatchRegenThumb() {
   ui.showToast('已加入换图队列')
 }
 
-
-
-async function onBatchRemux() {
-
-  const remuxable: { id: string; title: string }[] = []
-
-  for (const id of ids.value) {
-
-    try {
-
-      const info = await getPlayInfo(id)
-
-      if (info.remuxable) {
-
-        const item = gallery.videos.find((v) => v.id === id)
-
-        remuxable.push({ id, title: item?.title || id })
-
-      }
-
-    } catch {
-
-      /* skip */
-
-    }
-
-  }
-
-  if (!remuxable.length) {
-
-    ui.showToast('没有可修复的视频')
-
-    return
-
-  }
-
-  if (!confirm(`将修复 ${remuxable.length} 个视频，继续？`)) return
-
-  await beginBatchRemux()
-
-  try {
-
-    for (const { id, title } of remuxable) {
-
-      ui.showToast(`正在修复: ${title}`)
-
-      await startRemux(id)
-
-      const start = Date.now()
-
-      while (Date.now() - start < 600000) {
-
-        const st = await getRemuxStatus(id)
-
-        if (st.state === 'done') break
-
-        if (st.state === 'error') break
-
-        await new Promise((r) => setTimeout(r, 800))
-
-      }
-
-    }
-
-    ui.showToast('批量修复完成')
-
-  } finally {
-
-    await endBatchRemux().catch(() => {})
-
-  }
-
-  ui.clearSelection(true)
-
-  await gallery.loadVideos()
-
-}
-
 </script>
 
 
@@ -208,8 +129,6 @@ async function onBatchRemux() {
     <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onAddToAlbum">加入专辑</button>
 
     <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onBatchMove">移动</button>
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onBatchRemux">批量修复</button>
-
     <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onBatchRegenThumb">换缩略图</button>
 
     <button class="rounded border border-red-500/50 px-3 py-1 text-sm text-red-400" @click="onDelete">删除</button>

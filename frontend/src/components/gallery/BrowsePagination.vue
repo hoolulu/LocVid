@@ -24,6 +24,17 @@ const pageSizePresets = computed(() => [defaultPageSize.value])
 const showBar = computed(
   () => gallery.totalPages > 1 || gallery.pageSize !== defaultPageSize.value,
 )
+// 折叠页码条：≤7 页全显，否则显示首尾 + 当前±2 + 省略号
+const pageNumbers = computed<number[]>(() => {
+  const total = gallery.totalPages
+  const cur = gallery.page
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const set = new Set<number>()
+  for (const p of [1, 2, total - 1, total, cur - 2, cur - 1, cur, cur + 1, cur + 2]) {
+    if (p >= 1 && p <= total) set.add(p)
+  }
+  return [...set].sort((a, b) => a - b)
+})
 function onCustomInput(e: Event) {
   emit('update:customPageSize', (e.target as HTMLInputElement).value)
 }
@@ -31,9 +42,10 @@ function onCustomInput(e: Event) {
 function onJumpKey(e: KeyboardEvent) {
   if (e.key !== 'Enter') return
   const n = parseInt(jumpPage.value, 10)
-  if (!Number.isFinite(n)) return
   jumpPage.value = ''
-  emit('jumpPage', n)
+  if (!Number.isFinite(n)) return
+  // clamp 到 [1, totalPages]
+  emit('jumpPage', Math.max(1, Math.min(n, gallery.totalPages)))
 }
 </script>
 
@@ -108,6 +120,21 @@ function onJumpKey(e: KeyboardEvent) {
       >
         »
       </button>
+      <div class="page-list" aria-label="页码">
+        <template v-for="(p, i) in pageNumbers" :key="p">
+          <span v-if="i > 0 && p - pageNumbers[i - 1] > 1" class="page-ellipsis" aria-hidden="true">…</span>
+          <button
+            type="button"
+            class="page-num-btn"
+            :class="{ active: p === gallery.page }"
+            :aria-current="p === gallery.page ? 'page' : undefined"
+            @click="emit('changePage', p)"
+          >
+            {{ p }}
+          </button>
+        </template>
+      </div>
+      <span class="page-info-text">共 {{ gallery.total }} 个</span>
       <label class="page-jump">
         跳至
         <input

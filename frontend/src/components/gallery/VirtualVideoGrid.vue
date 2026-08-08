@@ -9,6 +9,7 @@ const props = defineProps<{
   videos: Video[]
   showPlayCount?: boolean
   showProgress?: boolean
+  focusedId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -36,12 +37,20 @@ const useVirtual = computed(() => props.videos.length > columns.value * 3)
 
 const scrollTop = ref(0)
 const viewportHeight = ref(600)
-
+// rAF 节流：scroll 事件高频触发，合并到下一帧再更新，避免虚拟化重算阻塞
+let scrollRaf = 0
 function onScroll(e: Event) {
   const el = e.target as HTMLElement
-  scrollTop.value = el.scrollTop
-  viewportHeight.value = el.clientHeight
+  if (scrollRaf) return
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0
+    scrollTop.value = el.scrollTop
+    viewportHeight.value = el.clientHeight
+  })
 }
+onMounted(() => {
+  if (containerRef.value) viewportHeight.value = containerRef.value.clientHeight
+})
 
 const visibleRange = computed(() => {
   if (!useVirtual.value) return { start: 0, end: rows.value.length }
@@ -59,10 +68,6 @@ const bottomPad = computed(() => Math.max(0, (rows.value.length - visibleRange.v
 const gridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${columns.value}, minmax(0, 1fr))`,
 }))
-
-onMounted(() => {
-  if (containerRef.value) viewportHeight.value = containerRef.value.clientHeight
-})
 </script>
 
 <template>
@@ -80,6 +85,7 @@ onMounted(() => {
         :video="video"
         :show-play-count="showPlayCount"
         :show-progress="showProgress"
+        :focused="focusedId === video.id"
         @play="emit('play', $event)"
         @toggle-favorite="emit('toggleFavorite', $event)"
         @contextmenu="emit('contextmenu', $event, video.id)"
@@ -90,7 +96,7 @@ onMounted(() => {
       <div :style="{ height: `${topPad}px` }" />
       <div
         v-for="(row, ri) in visibleRows"
-        :key="visibleRange.start + ri"
+        :key="row[0]?.id ?? `row-${visibleRange.start + ri}`"
         class="video-grid-row mb-3 grid gap-3"
         :style="gridStyle"
       >
@@ -100,6 +106,7 @@ onMounted(() => {
           :video="video"
           :show-play-count="showPlayCount"
           :show-progress="showProgress"
+          :focused="focusedId === video.id"
           @play="emit('play', $event)"
           @toggle-favorite="emit('toggleFavorite', $event)"
           @contextmenu="emit('contextmenu', $event, video.id)"

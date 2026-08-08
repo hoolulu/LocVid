@@ -382,6 +382,46 @@ def classify_format_plan(plan: dict | None) -> str | None:
         return "unsupported"
     return None
 
+
+def previewable_from_plan(plan: dict | None) -> bool:
+    """该播放计划能否用浏览器原生 <video> 做悬停预览。
+
+    预览与播放的解码能力不对称：悬停预览用原生 <video> 直连流（仅支持
+    H.264/VP8/VP9/AV1 的 mp4/mov/m4v/webm/ogv 等浏览器原生容器+编码），而播放
+    走 movi-player 的 WASM demux + WebCodecs（可解 MKV/AVI/TS/HEVC/伪装 MPEG-TS 等）。
+    因此"可正常播放但无法悬停预览"是一类常态，判定规则：
+
+    - mode != "direct"（unsupported / 伪装 TS 的 hls 等）→ 不可预览
+    - experimental_direct=True（非 MP4 容器直连、HEVC/AV1/VP9 现代编码直连）→ 不可预览
+    - 其余（标准 H.264 MP4、webm/ogv 原生直连，含 moov 在末尾的慢起播）→ 可预览
+    """
+    if not plan:
+        return False
+    if plan.get("mode") != "direct":
+        return False
+    if plan.get("disguised") or plan.get("experimental_direct"):
+        return False
+    return True
+
+
+def get_previewable_for_item(
+    library_id: str,
+    video_id: str,
+    mtime: float,
+    size: int,
+    path: Path | None = None,
+) -> bool:
+    """读悬停预览可用性：优先用播放计划缓存现算；无缓存时按格式索引兜底
+    （仅 unsupported 记为不可预览，其余默认可预览——主流 H.264 MP4 尚未探测时按可预览处理）。"""
+    plan = _peek_cached_plan_entry(path, mtime, size) if path is not None else None
+    if plan is not None:
+        return previewable_from_plan(plan)
+    if path is not None:
+        from loc_gallery.format_index import get_format_kind_for_item
+        kind = get_format_kind_for_item(library_id, video_id, mtime, size)
+        return kind != "unsupported"
+    return True
+
 _FORMAT_BADGE_LABELS: dict[str, str] = {
     "transcode": "special",
     "remuxable": "remuxable",

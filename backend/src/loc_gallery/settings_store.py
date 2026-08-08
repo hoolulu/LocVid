@@ -7,6 +7,8 @@ from pathlib import Path
 
 from loc_gallery.config import (
     DEFAULT_PAGE_SIZE,
+    DEFAULT_SORT,
+    WATCH_IGNORE_DIRS,
     HISTORY_RETENTION_DAYS,
     HTML5_PLAYLIST_AUTOPLAY,
     HTML5_RESUME_PLAYBACK,
@@ -53,6 +55,8 @@ _DEFAULTS = {
     "thumb_jitter_min": THUMB_JITTER_MIN,
     "thumb_jitter_max": THUMB_JITTER_MAX,
     "default_page_size": DEFAULT_PAGE_SIZE,
+    "default_sort": DEFAULT_SORT,
+    "watch_ignore_dirs": WATCH_IGNORE_DIRS,
     "external_player_path": detect_external_player_path(),
     "history_retention_days": HISTORY_RETENTION_DAYS,
     "html5_playlist_autoplay": HTML5_PLAYLIST_AUTOPLAY,

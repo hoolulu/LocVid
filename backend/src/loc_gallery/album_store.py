@@ -34,8 +34,48 @@ def _load_raw(library_id: str) -> dict:
 def _save_raw(library_id: str, data: dict) -> dict:
     path = albums_file(library_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 原子写：先写临时文件再 replace，避免进程中断时截断 JSON（与缩略图索引一致）
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
     return data
+
+
+def export_albums(library_id: str) -> dict:
+    """导出专辑全量数据（备份/迁移用）。"""
+    with _lock:
+        return _load_raw(library_id)
+
+
+def import_albums(library_id: str, data: dict) -> dict:
+    """导入专辑全量数据（覆盖当前）。"""
+    albums = dict((data or {}).get("albums") or {})
+    order = list((data or {}).get("album_order") or [])
+    if not order:
+        order = list(albums.keys())
+    with _lock:
+        return _save_raw(library_id, {"version": 1, "albums": albums, "album_order": order})
+
+
+def migrate_video_id(library_id: str, old_id: str, new_id: str) -> None:
+    """改名/移动后所有专辑里的 video_id 从旧 id 迁移到新 id（保留专辑归属）。"""
+    if old_id == new_id:
+        return
+    with _lock:
+        data = _load_raw(library_id)
+        changed = False
+        # ⚠️ 专辑存储用 items 键（{video_id: {added_at, position}}），video_ids 只是运行时
+        # summary 字段（读不存在的键会导致迁移永远匹配不到 → 改名丢专辑的根因）
+        for album in (data.get("albums") or {}).values():
+            items = album.get("items") or {}
+            if old_id in items:
+                items[new_id] = items.pop(old_id)
+                changed = True
+            if album.get("cover_video_id") == old_id:
+                album["cover_video_id"] = new_id
+                changed = True
+        if changed:
+            _save_raw(library_id, data)
 
 
 def _normalize_positions(items: dict) -> None:
