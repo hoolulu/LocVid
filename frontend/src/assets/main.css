@@ -1377,9 +1377,10 @@ body.manage-mode .card-album-badge {
 .player-video-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: center;
+  gap: 1.25rem;
   flex-shrink: 0;
-  padding: 0.45rem 0.75rem;
+  padding: 0.8rem 1rem;
   border-top: 1px solid var(--lg-border);
   background: var(--lg-bg-secondary);
 }
@@ -1389,16 +1390,15 @@ body.manage-mode .card-album-badge {
   justify-content: flex-end;
   flex-shrink: 0;
   gap: 0.35rem;
-  margin-left: auto;
 }
 .player-back-btn {
   flex-shrink: 0;
-  padding: 0.4rem 0.85rem;
+  padding: 0.55rem 1.1rem;
   border-radius: 6px;
   border: 1px solid var(--lg-border);
   background: var(--lg-bg-elevated);
   color: var(--lg-text-primary);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -1411,12 +1411,12 @@ body.manage-mode .card-album-badge {
 }
 .player-nav-btn {
   flex-shrink: 0;
-  padding: 0.4rem 0.85rem;
+  padding: 0.55rem 1.1rem;
   border-radius: 6px;
   border: 1px solid var(--lg-border);
   background: var(--lg-bg-elevated);
   color: var(--lg-text-primary);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -1436,12 +1436,12 @@ body.manage-mode .card-album-badge {
 }
 .player-toolbar-btn {
   flex-shrink: 0;
-  padding: 0.35rem 0.65rem;
+  padding: 0.55rem 1rem;
   border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--lg-text-secondary);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -1491,6 +1491,12 @@ body.manage-mode .card-album-badge {
   width: 100%;
   height: 100%;
   background: #000;
+}
+/* movi-player 进度条加粗：默认 4px/悬停 6px 太细难定位。
+   官方 CSS 变量从宿主元素穿透进 Shadow DOM，全局设置即可生效。 */
+movi-player {
+  --movi-progress-height: 10px;
+  --movi-progress-height-hover: 14px;
 }
 
 /* 播放列表侧栏 */

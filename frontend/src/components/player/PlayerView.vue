@@ -310,9 +310,9 @@ async function onPlaylistSortChange(e: Event) {
         </div>
 
         <header class="player-video-toolbar">
-          <div class="player-video-meta min-w-0 flex-1">
-            <h2 class="truncate text-sm font-medium">{{ current?.title || current?.filename }}</h2>
-            <p class="truncate text-xs text-[var(--lg-text-muted)]">{{ current?.path }}</p>
+          <div class="player-video-meta min-w-0">
+            <h2 class="truncate text-lg font-bold leading-snug">{{ current?.title || current?.filename }}</h2>
+            <p class="mt-0.5 truncate text-[13px] text-[var(--lg-text-muted)]">{{ current?.path }}</p>
           </div>
           <div class="player-toolbar-actions">
             <button
