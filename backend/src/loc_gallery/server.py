@@ -833,9 +833,12 @@ def _get_filtered_video_ids(
         format=format,
     )
     ver = get_version(library_id)
-    # playcount 排序依赖播放历史，播放次数变化不会 bump 扫描 version（缓存无法失效）→ 不走缓存
-    playcount_sort = sort in ("playcount_desc", "playcount_asc")
-    if not playcount_sort:
+    # playcount 排序与收藏/历史/专辑过滤都依赖用户数据，其变化不会 bump 扫描 version
+    # （缓存无法失效）→ 一律不走缓存，每次现算保证列表实时
+    user_data_dependent = (
+        sort in ("playcount_desc", "playcount_asc") or favorites or history or album_id
+    )
+    if not user_data_dependent:
         hit = _filter_ids_cache.get(key)
         if hit and hit[0] == ver:
             return hit[1]
@@ -891,7 +894,7 @@ def _get_filtered_video_ids(
         fmt_items = [v for vid in ids if (v := get_by_id(library_id, vid))]
         ids = [v.id for v in filter_items_by_format(fmt_items, format, library_id)]
 
-    if not playcount_sort:
+    if not user_data_dependent:
         _filter_ids_cache[key] = (ver, ids)
 
         stale = [k for k, (cached_ver, _) in _filter_ids_cache.items() if k[0] == library_id and cached_ver != ver]
