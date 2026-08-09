@@ -67,6 +67,13 @@ export function usePlayback() {
       /* ignore */
     }
     player.moviPlayer = null
+    // 关键：清空宿主内所有残留 <movi-player> 元素——moviPlayer 只在 onReady 后赋值，
+    // "创建后未就绪"就切走的孤儿实例（带 autoplay+src）destroy 不到，ready 后会自动播放，
+    // 与当前视频形成双解码/双音轨（P1 bug）
+    const host = player.moviHostEl
+    if (host) {
+      while (host.firstChild) host.removeChild(host.firstChild)
+    }
   }
 
   async function stopSlice() {

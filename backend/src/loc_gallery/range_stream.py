@@ -17,17 +17,22 @@ def _parse_range(range_header: str | None, file_size: int) -> tuple[int, int]:
         return 0, 0
     if not range_header or not range_header.startswith("bytes="):
         return 0, file_size - 1
-    spec = range_header[6:].strip()
-    if "-" not in spec:
+    try:
+        spec = range_header[6:].strip()
+        if "-" not in spec:
+            return 0, file_size - 1
+        start_s, end_s = spec.split("-", 1)
+        if start_s:
+            start = int(start_s)
+            end = int(end_s) if end_s else file_size - 1
+        else:
+            suffix = int(end_s) if end_s else 0
+            start = max(0, file_size - suffix)
+            end = file_size - 1
+    except ValueError:
+        # 畸形/多段 Range（bytes=abc、bytes=0-abc、bytes=0-1,3-4）：
+        # 回退全量响应，避免整个流接口 500（浏览器插件/第三方播放器常发非规范头）
         return 0, file_size - 1
-    start_s, end_s = spec.split("-", 1)
-    if start_s:
-        start = int(start_s)
-        end = int(end_s) if end_s else file_size - 1
-    else:
-        suffix = int(end_s) if end_s else 0
-        start = max(0, file_size - suffix)
-        end = file_size - 1
     start = max(0, min(start, file_size - 1))
     end = max(start, min(end, file_size - 1))
     return start, end

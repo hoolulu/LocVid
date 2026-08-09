@@ -915,9 +915,13 @@ def schedule_ids(video_ids: list[str], priority: Priority = Priority.NORMAL) -> 
     if priority == Priority.HIGH:
         with _lock:
             keep = set(video_ids)
+            # 只清【本库】待重排的普通任务：HIGH 调度针对当前库，不能把其它库的
+            # NORMAL/LOW 任务整体清掉（多库并发排队时会静默丢失其它库任务，P2 bug）
             _queue[:] = [
                 q for q in _queue
-                if q.video_id in keep or q.priority == Priority.HIGH.value
+                if q.video_id in keep
+                or q.priority == Priority.HIGH.value
+                or q.library_id != _lid()
             ]
     count = 0
     for vid in video_ids:

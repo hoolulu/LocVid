@@ -225,6 +225,12 @@ def move_videos(library_id: str, video_ids: list[str], category: str) -> dict:
             refresh_cache(library_id)
 
             new_item = next((v for v in get_all(library_id) if v.path == str(dest)), None)
+            if new_item is None:
+                # refresh_cache 可能因 mtime 检查跳过刚移动的文件（下载完即整理的场景）：
+                # 若不兜底，new_id=None + 后续 watchdog prune 会把 _migrate_video_id
+                # 刚迁到新 id 的收藏/历史/专辑当"不存在"删掉（P1 数据丢失）
+                from loc_gallery.scanner import upsert_video_from_path
+                new_item = upsert_video_from_path(library_id, dest)
             moved.append({
                 "old_id": vid,
                 "new_id": new_item.id if new_item else None,
