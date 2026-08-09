@@ -287,6 +287,18 @@ async function onPlaylistSortChange(e: Event) {
           <!-- <movi-player> web 组件挂载点：自带 canvas 渲染 + 控件 + 字幕 -->
           <div ref="moviHost" class="player-movi-host absolute inset-0"></div>
 
+          <!-- 左上角悬浮返回按钮（业内心智模型标准位；右下角 player-back-btn 保留作冗余路径） -->
+          <button
+            class="player-back-top"
+            :title="t('player.backTitle')"
+            :aria-label="t('player.backTitle')"
+            @click="cancelPlayback()"
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+
           <div
             v-if="player.overlayVisible"
             class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--lg-bg-overlay)] px-6 text-center"

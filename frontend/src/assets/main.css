@@ -1391,6 +1391,32 @@ body.manage-mode .card-album-badge {
   flex-shrink: 0;
   gap: 0.35rem;
 }
+/* 左上角悬浮返回按钮：视频画面之上，鼠标移动/悬停变清晰（Netflix/YouTube 标准位） */
+.player-back-top {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  opacity: 0.72;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
+}
+.player-back-top:hover {
+  background: rgba(0, 0, 0, 0.72);
+  opacity: 1;
+}
 .player-back-btn {
   flex-shrink: 0;
   padding: 0.55rem 1.1rem;
