@@ -4,6 +4,13 @@
 
 ## [14.5.0] - 2026-08-10
 
+## [14.5.1] - 2026-08-10
+
+### Fixed
+
+- **重启服务确认框被配置页遮挡**：确认对话框与配置对话框 z-index 同为 260，配置对话框内部 stacking context 致确认框落在下层。提升确认对话框至 z-index 320，单独作为顶层 dialog。
+
+
 ### Fixed (English)
 
 This release is a systematic bug-hunting pass across the whole codebase (30 fixes, all verified by behavior tests and full audits).
