@@ -11,7 +11,8 @@ from pathlib import Path
 # 本文件位于 backend/src/loc_gallery/ → parents[3] 才是项目根（F:/LocVid）
 # parents[2] 会取到 backend/，导致 scripts/restart_service.py 与 data/logs 全部错位（重启 API 一直 FileNotFoundError）
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_SRC_DIR = _PROJECT_ROOT / "src"
+# 显式指向 backend/src（不能用 _PROJECT_ROOT/"src"，那会指向不存在的 F:/LocVid/src）
+_SRC_DIR = Path(__file__).resolve().parents[1]
 _SCRIPT = _PROJECT_ROOT / "scripts" / "restart_service.py"
 _RESTART_LOG = _PROJECT_ROOT / "data" / "logs" / "restart.log"
 if str(_SRC_DIR) not in sys.path:
