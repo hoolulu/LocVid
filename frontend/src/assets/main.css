@@ -1391,12 +1391,11 @@ body.manage-mode .card-album-badge {
   flex-shrink: 0;
   gap: 0.35rem;
 }
-/* 右上角悬浮返回按钮：默认隐藏，鼠标悬停在播放区域时淡入
-   （Windows 用户习惯右上角=退出/返回，且播放页右上无其他元素，不与 movi 控件冲突） */
+/* 左上角悬浮返回按钮：默认隐藏，鼠标悬停在播放区域时淡入（Netflix/YouTube 标准交互） */
 .player-back-top {
   position: absolute;
   top: 14px;
-  right: 14px;
+  left: 14px;
   z-index: 30;
   display: inline-flex;
   align-items: center;
