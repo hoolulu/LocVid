@@ -1703,13 +1703,16 @@ async def api_thumb_failed(library_id: str = Depends(resolve_library_id)):
 
 @app.get("/api/thumb/stats")
 async def api_thumb_stats(library_id: str = Depends(resolve_library_id)):
-    """缩略图缓存占用统计（设置页维护入口用）。"""
+    """缩略图缓存占用统计（设置页维护入口用）。
+
+    只统计 *.jpg 缩略图本体：目录里的 index.json 等非缩略图文件不计入，
+    否则"107 个文件"与 106 个视频对不上让用户困惑（计数口径与视频数直接可比）。"""
     from loc_gallery.config import thumb_dir
     tdir = thumb_dir(library_id)
     files = 0
     total = 0
     if tdir.exists():
-        for p in tdir.rglob("*"):
+        for p in tdir.glob("*.jpg"):
             if not p.is_file():
                 continue
             files += 1
