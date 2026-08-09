@@ -1,5 +1,7 @@
 # LocVid — Local Video Library
 
+**[中文版（Chinese Version）](#中文版chinese-version)** · [Changelog](./CHANGELOG.md)
+
 **Double-click to start a local video library web service — browse, search, play and organize every video on your hard drives in the browser.**
 
 > Vue 3 · Classic / Cinema layouts · Single-port dev hot-reload · i18n (English / 中文)
@@ -295,7 +297,7 @@ python backend/tests/test_auto_new_video.py
 
 ---
 
-## 中文文档 · LocVid 本地影库
+## 中文版（Chinese Version）
 
 **本地视频画廊 Web 服务 — 双击启动，浏览器里浏览、搜索、播放你的整个视频库**
 
