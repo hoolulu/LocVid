@@ -326,6 +326,7 @@ class SettingsUpdate(BaseModel):
     html5_player_next_key: str | None = None
     html5_disable_movi_hotkeys: bool | None = None
     html5_hover_preview: bool | None = None
+    html5_hover_preview_mode: str | None = None  # video | thumb
     html5_hover_preview_segments: int | None = None
     html5_hover_preview_segment_sec: int | None = None
     html5_hover_tip_pin: bool | None = None
