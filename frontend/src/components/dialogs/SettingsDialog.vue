@@ -462,6 +462,13 @@ watch(tab, (t) => {
                       <option :value="false">{{ t('settings.hoverPreviewOff') }}</option>
                     </select>
                   </label>
+                  <label v-if="form.html5_hover_preview" class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.hoverPreviewMode') }}</span>
+                    <select v-model="form.html5_hover_preview_mode" class="settings-input">
+                      <option value="video">{{ t('settings.hoverPreviewModeVideo') }}</option>
+                      <option value="thumb">{{ t('settings.hoverPreviewModeThumb') }}</option>
+                    </select>
+                  </label>
                   <label class="settings-field">
                     <span class="settings-field-label">{{ t('settings.segments') }}</span>
                     <div class="settings-unit-row">

@@ -17,9 +17,15 @@ const hoverPreviewEnabled = computed(
   () => settings.settings?.html5_hover_preview !== false,
 )
 
-// 预览区渲染条件：预览开启且比例就绪（有真实尺寸才渲染，避免空容器挂 video 黑屏）
+// 缩略图模式：悬停不加载视频流，直接显示大缩略图（省带宽/解码资源）
+const previewModeThumb = computed(
+  () => hoverPreviewEnabled.value && settings.settings?.html5_hover_preview_mode === 'thumb',
+)
+
+// 预览区渲染条件：预览开启且比例就绪（有真实尺寸才渲染，避免空容器挂 video 黑屏）；
+// 缩略图模式不走视频预览区
 const previewAreaVisible = computed(
-  () => hoverPreviewEnabled.value && !!previewRatio.value,
+  () => hoverPreviewEnabled.value && !previewModeThumb.value && !!previewRatio.value,
 )
 
 // 占位尺寸按原视频宽高比自适应：约束最大宽/高，竖屏（比例<1）宽度随高度反推
@@ -149,10 +155,10 @@ const previewStatic = computed(() => item.value != null && item.value.previewabl
 //   浮层每次显示或切换视频（item.id 变化）都重新定位——不能只靠值变化触发，
 //   否则快速切换两个 previewable===false 的视频时 previewStatic 恒为 true 不会触发
 watch(
-  () => [visible.value, item.value?.id, previewFailed.value, previewStatic.value],
+  () => [visible.value, item.value?.id, previewFailed.value, previewStatic.value, previewModeThumb.value],
   ([v]) => {
     if (!v) return
-    if (!hoverPreviewEnabled.value || previewStatic.value || previewFailed.value) {
+    if (!hoverPreviewEnabled.value || previewModeThumb.value || previewStatic.value || previewFailed.value) {
       void nextTick(() => afterLayout(tipRef.value))
     }
   },
@@ -200,6 +206,18 @@ watch(previewRatio, () => {
           :src="thumbUrl(item.id, item.thumbVersion)"
           alt=""
           decoding="async"
+          @load="onImgLoad"
+        />
+        <div v-else class="path-tip-preview--empty">{{ t('thumb.emptyHint') }}</div>
+      </template>
+      <!-- 缩略图模式：不加载视频流，直接显示大缩略图 -->
+      <template v-else-if="previewModeThumb">
+        <img
+          v-if="item.thumbReady || item.thumbVersion"
+          :src="thumbUrl(item.id, item.thumbVersion)"
+          alt=""
+          decoding="async"
+          class="path-tip-preview--thumb"
           @load="onImgLoad"
         />
         <div v-else class="path-tip-preview--empty">{{ t('thumb.emptyHint') }}</div>

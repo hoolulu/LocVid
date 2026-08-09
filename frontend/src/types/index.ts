@@ -124,6 +124,7 @@ export interface Settings {
   html5_player_next_key: string
   html5_disable_movi_hotkeys: boolean
   html5_hover_preview: boolean
+  html5_hover_preview_mode: 'video' | 'thumb'
   html5_hover_preview_segments: number
   html5_hover_preview_segment_sec: number
   html5_hover_tip_pin: boolean

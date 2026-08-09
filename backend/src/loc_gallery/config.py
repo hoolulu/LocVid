@@ -32,6 +32,8 @@ HTML5_PLAYER_NEXT_KEY = "/"  # 播放页下一个
 HTML5_DISABLE_MOVI_HOTKEYS = True
 # 悬停缩略图多段视频预览（原生 <video> 直连 Range 流，无切片/无预生成；False 关闭）
 HTML5_HOVER_PREVIEW = True
+# 悬停预览模式：'video'=多段视频预览（默认）；'thumb'=仅显示大缩略图（不加载视频，省资源）
+HTML5_HOVER_PREVIEW_MODE = "video"
 # 预览蒙太奇：段数（在 15%~85% 区间均匀分布）与每段秒数
 HTML5_HOVER_PREVIEW_SEGMENTS = 5
 HTML5_HOVER_PREVIEW_SEGMENT_SEC = 5
