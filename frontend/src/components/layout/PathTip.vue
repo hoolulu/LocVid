@@ -181,7 +181,7 @@ watch(previewRatio, () => {
     <button
       v-if="pinned"
       class="path-tip-close"
-      title="{{ t('tip.closePreview') }}"
+      :title="t('tip.closePreview')"
       @click="onCloseTip"
     >
       ✕

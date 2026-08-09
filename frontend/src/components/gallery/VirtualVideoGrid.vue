@@ -66,10 +66,11 @@ const visibleRange = computed(() => {
 })
 
 // 列表切换（切库/切分类/翻页/搜索）时重置滚动到顶部：
-// 否则残留 scrollTop 会让虚拟窗口落在新列表的错误位置（小库时甚至越界空白），
-// 且新库从中间开始浏览不符合"切换后回到列表开头"的预期
+// 否则残留 scrollTop 会让虚拟窗口落在新列表的错误位置（小库时甚至越界空白）。
+// 注意用「内容签名」（首元素 id + 长度）而非数组引用：收藏/取消收藏触发的 loadVideos
+// 会产生新数组引用但内容未变——若按引用重置，浏览中收藏卡片会误跳回顶部（回归）
 watch(
-  () => props.videos,
+  () => (props.videos.length > 0 ? `${props.videos[0].id}:${props.videos.length}` : ''),
   () => {
     scrollTop.value = 0
     const el = containerRef.value

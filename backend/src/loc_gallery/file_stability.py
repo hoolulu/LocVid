@@ -40,8 +40,14 @@ def set_stable_callback(callback: Callable[[], None] | None) -> None:
 
 
 def is_incomplete_filename(name: str) -> bool:
+    """判断文件名是否属于"下载中"标记。
+
+    必须按【扩展名后缀】匹配，不能用 `marker in lower` 子串匹配——
+    `.part`/`.download`/`.temp` 等会误伤 The.**.part**y.mp4、Video.**.download**s.mp4、
+    Movie.**.temp**late.mkv 这类正常片名（此前 P1 bug：正常视频被永久过滤不入库）。
+    """
     lower = name.lower()
-    return any(marker in lower for marker in _INCOMPLETE_MARKERS)
+    return any(lower.endswith(marker) for marker in _INCOMPLETE_MARKERS)
 
 
 def _stat(path: Path) -> tuple[int, float] | None:

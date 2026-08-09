@@ -1125,7 +1125,14 @@ def _do_rescan(library_id: str) -> None:
 def _schedule_rescan(library_id: str) -> None:
     """Trigger rescan in background thread so API returns immediately."""
     import threading
-    threading.Thread(target=_do_rescan, args=(library_id,), daemon=True, name="bg-rescan").start()
+
+    def _run() -> None:
+        # 线程内必须设置库上下文：thumb_manager 的 _idx()/_lid()/cleanup_orphans() 等
+        # 依赖线程 contextvar；缺省会回退到 active 库 → 多库下索引同步/孤儿清理作用错库
+        set_thread_library(library_id)
+        _do_rescan(library_id)
+
+    threading.Thread(target=_run, daemon=True, name="bg-rescan").start()
 
 
 @app.post("/api/folders/delete")
@@ -1873,7 +1880,9 @@ async def api_videos_move(req: MoveRequest, library_id: str = Depends(resolve_li
 
 @app.post("/api/rescan")
 async def api_rescan(library_id: str = Depends(resolve_library_id)):
-    _do_rescan(library_id)
+    # _do_rescan 含全库扫描/ffprobe/缩略图等秒级阻塞操作，直接同步执行会冻结事件循环
+    # （期间所有 API/SSE/流式请求全部卡死）；移入线程池执行
+    await asyncio.to_thread(_do_rescan, library_id)
     _broadcast("progress", library_id)
     return {"version": get_version(library_id), "count": len(get_all(library_id))}
 

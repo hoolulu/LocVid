@@ -8,7 +8,9 @@ import threading
 import time
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# 本文件位于 backend/src/loc_gallery/ → parents[3] 才是项目根（F:/LocVid）
+# parents[2] 会取到 backend/，导致 scripts/restart_service.py 与 data/logs 全部错位（重启 API 一直 FileNotFoundError）
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _SRC_DIR = _PROJECT_ROOT / "src"
 _SCRIPT = _PROJECT_ROOT / "scripts" / "restart_service.py"
 _RESTART_LOG = _PROJECT_ROOT / "data" / "logs" / "restart.log"
