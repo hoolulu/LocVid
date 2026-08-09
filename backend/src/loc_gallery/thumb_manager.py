@@ -1190,17 +1190,32 @@ def migrate_thumb_id(library_id: str, old_id: str, new_id: str) -> None:
     _flush_index_sync(library_id)
 
 
-def cleanup_orphans() -> int:
-    videos = {v.id for v in get_all(_lid())}
+def cleanup_orphans(library_id: str | None = None) -> int:
+    """清理孤立缩略图：磁盘上不属于当前库任何视频的 .jpg（被删视频残留/损坏/候选图）
+    + 索引中已不存在的条目。此前只清索引条目级孤儿（≈0），磁盘残留永远不会被清（P 修复）。"""
+    lid = _lid(library_id)
+    videos = {v.id for v in get_all(lid)}
     removed = 0
     with _lock:
-        for vid in [v for v in _idx() if v not in videos]:
-            del _idx()[vid]
-            thumb = _thumb_file(vid)
+        # 1) 磁盘文件级孤儿：thumb 目录下非当前库视频的 *.jpg
+        tdir = _tdir(lid)
+        if tdir.exists():
+            for p in list(tdir.glob("*.jpg")):
+                if p.stem in videos:
+                    continue
+                try:
+                    p.unlink(missing_ok=True)
+                    removed += 1
+                except OSError:
+                    pass
+        # 2) 索引条目级孤儿：索引中已不存在的视频
+        for vid in [v for v in _idx(lid) if v not in videos]:
+            del _idx(lid)[vid]
+            thumb = _thumb_file(vid, lid)
             if thumb.exists():
                 thumb.unlink(missing_ok=True)
                 removed += 1
-        _mark_dirty()
+        _mark_dirty(lid)
     _schedule_flush()
     return removed
 

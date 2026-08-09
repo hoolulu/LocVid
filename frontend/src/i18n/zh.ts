@@ -369,7 +369,7 @@ export default {
   'settings.jitterMin': '偏移下限 %',
   'settings.jitterMax': '偏移上限 %',
   'settings.maintenance': '维护',
-  'settings.cacheUsage': '缓存占用：{text}',
+  'settings.cacheUsage': '当前视频库缓存占用：{text}',
   'settings.cleanupBtn': '清理孤立缩略图',
   'settings.regenFailedBtn': '重新生成失败的',
   'settings.general': '通用',

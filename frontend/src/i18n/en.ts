@@ -371,7 +371,7 @@ export default {
   'settings.jitterMin': 'Offset min %',
   'settings.jitterMax': 'Offset max %',
   'settings.maintenance': 'Maintenance',
-  'settings.cacheUsage': 'Cache: {text}',
+  'settings.cacheUsage': 'Current library cache: {text}',
   'settings.cleanupBtn': 'Clean Up Orphan Thumbnails',
   'settings.regenFailedBtn': 'Regenerate Failed',
   'settings.general': 'General',
