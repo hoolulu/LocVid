@@ -49,7 +49,9 @@ def export_albums(library_id: str) -> dict:
 
 def import_albums(library_id: str, data: dict) -> dict:
     """导入专辑全量数据（覆盖当前）。"""
-    albums = dict((data or {}).get("albums") or {})
+    raw_albums = (data or {}).get("albums") or {}
+    # 导入数据校验：过滤非 dict 专辑（P2）
+    albums = {k: v for k, v in raw_albums.items() if isinstance(v, dict)}
     order = list((data or {}).get("album_order") or [])
     if not order:
         order = list(albums.keys())

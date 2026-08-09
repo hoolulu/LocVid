@@ -41,7 +41,9 @@ def export_history(library_id: str) -> dict:
 
 def import_history(library_id: str, data: dict) -> None:
     """导入播放记录全量数据（覆盖当前）。"""
-    items = dict((data or {}).get("items") or {})
+    raw = (data or {}).get("items") or {}
+    # 导入数据校验：过滤非 dict 条目（P2）
+    items = {k: v for k, v in raw.items() if isinstance(v, dict)}
     with _lock:
         _save_raw(library_id, {"items": items})
 

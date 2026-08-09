@@ -41,7 +41,9 @@ def export_favorites(library_id: str) -> dict:
 
 def import_favorites(library_id: str, data: dict) -> dict:
     """导入收藏全量数据（覆盖当前）。"""
-    items = dict((data or {}).get("items") or {})
+    raw = (data or {}).get("items") or {}
+    # 导入数据校验：过滤非 dict 条目，否则列表接口对值调 .get() 会 AttributeError 500
+    items = {k: v for k, v in raw.items() if isinstance(v, dict)}
     with _lock:
         return _save_raw(library_id, {"items": items})
 

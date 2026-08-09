@@ -453,6 +453,10 @@ def _scan_library_for_remux(library_id: str, get_all, set_thread_library) -> Non
                 # 已启动一个修复任务；等待其完成后再取下一个（避免排队风暴）
                 _auto_remux_stop.wait(_AUTO_REMUX_PAUSE_SEC)
                 return
+            if result.get("busy"):
+                # 瞬时占用（其它视频修复中）：不进黑名单，等下一轮再试
+                _auto_remux_stop.wait(_AUTO_REMUX_PAUSE_SEC)
+                return
             if result.get("error"):
                 # 修复失败（含 can_remux 校验失败）：记录黑名单，文件未变化前不再重试
                 _remux_failed_keys.add(key)

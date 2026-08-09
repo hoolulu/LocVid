@@ -51,6 +51,14 @@ async def stream_file_with_disconnect(
     media_type: str,
 ) -> Response:
     file_size = path.stat().st_size
+    if file_size <= 0:
+        # 0 字节文件：直接返回空 body。_parse_range 对 0 字节会返回 (0,0) → length=1，
+        # 但 body 读不到字节（0 字节文件）→ 声明 1 字节却无内容，客户端挂起等待（P2）
+        return Response(
+            status_code=200,
+            content=b"",
+            headers={"Accept-Ranges": "bytes"},
+        )
     start, end = _parse_range(request.headers.get("range"), file_size)
     length = end - start + 1
     partial = bool(request.headers.get("range"))
