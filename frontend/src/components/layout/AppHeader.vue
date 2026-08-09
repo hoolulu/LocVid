@@ -123,6 +123,9 @@ async function onLibraryChange(e: Event) {
   gallery.folder = null
   gallery.query = '' // 切库必须清搜索词，否则 B 库带着 A 库的关键词（常得空列表）
   gallery.page = 1
+  // 立即清空旧库列表 → 骨架屏接管：否则旧库网格残留到新数据到达才整体替换，
+  // 视觉上"所有图片闪烁一次"（用户反馈）
+  gallery.videos = []
   await gallery.loadCategories()
   await gallery.loadVideos()
   await album.loadAlbums()
