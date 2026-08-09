@@ -1391,31 +1391,35 @@ body.manage-mode .card-album-badge {
   flex-shrink: 0;
   gap: 0.35rem;
 }
-/* 左上角悬浮返回按钮：视频画面之上，鼠标移动/悬停变清晰（Netflix/YouTube 标准位） */
+/* 左上角悬浮返回按钮：默认隐藏，鼠标悬停在播放区域时淡入（Netflix/YouTube 标准交互） */
 .player-back-top {
   position: absolute;
   top: 14px;
   left: 14px;
   z-index: 30;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  padding: 0;
+  gap: 7px;
+  padding: 8px 16px 8px 12px;
   border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
   color: rgba(255, 255, 255, 0.92);
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
-  opacity: 0.72;
+  opacity: 1;
   transition:
-    background 0.15s ease,
-    opacity 0.15s ease;
+    opacity 0.2s ease,
+    background 0.15s ease;
+}
+.player-back-top--hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 .player-back-top:hover {
   background: rgba(0, 0, 0, 0.72);
-  opacity: 1;
 }
 .player-back-btn {
   flex-shrink: 0;

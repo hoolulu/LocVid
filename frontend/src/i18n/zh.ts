@@ -250,6 +250,7 @@ export default {
 
   // ── 播放器 ──
   'player.backToBrowse': '返回浏览',
+  'player.backToList': '返回列表',
   'player.prev': '上一个',
   'player.next': '下一个',
   'player.playlist': '播放列表',

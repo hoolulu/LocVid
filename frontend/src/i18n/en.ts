@@ -252,6 +252,7 @@ export default {
 
   // ── Player ──
   'player.backToBrowse': 'Back to Browse',
+  'player.backToList': 'Back to list',
   'player.prev': 'Previous',
   'player.next': 'Next',
   'player.playlist': 'Playlist',

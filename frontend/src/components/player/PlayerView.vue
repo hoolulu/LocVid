@@ -28,6 +28,15 @@ const sentinelRef = ref<HTMLElement | null>(null)
 const playlistItemRefs = ref<Record<string, HTMLElement>>({})
 let observer: IntersectionObserver | null = null
 
+// 左上角返回按钮显隐：鼠标悬停在播放区域（player-stage）时显示，移出即隐藏
+const backVisible = ref(false)
+function onStageMouseEnter() {
+  backVisible.value = true
+}
+function onStageMouseLeave() {
+  backVisible.value = false
+}
+
 const current = computed(() => player.playingItem)
 const playlistSortOptions = computed(() => getPlaylistSortOptions())
 
@@ -283,20 +292,27 @@ async function onPlaylistSortChange(e: Event) {
   >
     <div class="flex min-h-0 flex-1">
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div class="player-stage min-h-0 flex-1" @wheel.prevent="onWheel">
+        <div
+          class="player-stage min-h-0 flex-1"
+          @wheel.prevent="onWheel"
+          @mouseenter="onStageMouseEnter"
+          @mouseleave="onStageMouseLeave"
+        >
           <!-- <movi-player> web 组件挂载点：自带 canvas 渲染 + 控件 + 字幕 -->
           <div ref="moviHost" class="player-movi-host absolute inset-0"></div>
 
-          <!-- 左上角悬浮返回按钮（业内心智模型标准位；右下角 player-back-btn 保留作冗余路径） -->
+          <!-- 左上角悬浮返回按钮：鼠标悬停在播放区域才显示，移出隐藏（Netflix/YouTube 标准交互） -->
           <button
             class="player-back-top"
+            :class="{ 'player-back-top--hidden': !backVisible }"
             :title="t('player.backTitle')"
             :aria-label="t('player.backTitle')"
             @click="cancelPlayback()"
           >
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M15 18l-6-6 6-6" />
             </svg>
+            <span>{{ t('player.backToList') }}</span>
           </button>
 
           <div
