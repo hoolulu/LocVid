@@ -1945,6 +1945,16 @@ def _worker_loop() -> None:
                     task = _queue.pop(0)
                     task_lid = task.library_id or _lid()
                     task_id = task.video_id
+                    # 立即登记：弹队列到 _process_one 执行之间有空窗，
+                    # 孤儿检查（8s 轮）会判定"既不在队列也不在生成"而重复入队（P2 重复工作）
+                    tkey = _task_key(task_lid, task_id)
+                    _generating.add(tkey)
+                    _generating_started[tkey] = time.time()
+                    # 立即登记：弹队列到 _process_one 执行之间有空窗，
+                    # 孤儿检查（8s 轮）会判定"既不在队列也不在生成"而重复入队（P2 重复工作）
+                    tkey = _task_key(task_lid, task_id)
+                    _generating.add(tkey)
+                    _generating_started[tkey] = time.time()
 
             if task_id and task_lid and _executor:
                 _executor.submit(_process_one, task_lid, task_id)
