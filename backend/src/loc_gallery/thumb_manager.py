@@ -1849,6 +1849,13 @@ def _process_one(library_id: str, video_id: str) -> None:
     if not item:
         return
 
+    # 严格串行：该视频待修复/修复中 → 跳过缩略图（修复完成后 watchdog 重入库会重新排队，
+    # 避免「先做缩略图/时长、修复后又要重做一遍」）
+    from loc_gallery.remux_manager import is_pending_or_running
+
+    if is_pending_or_running(library_id, video_id):
+        return
+
     if not _video_is_processable(item):
         with _lock:
             entry = _idx(library_id).get(video_id)

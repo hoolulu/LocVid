@@ -379,6 +379,104 @@ body {
 .duration-progress-fill {
   background: linear-gradient(90deg, #3b82f6, #60a5fa);
 }
+.remux-progress-fill {
+  background: linear-gradient(90deg, #d97706, #f59e0b);
+}
+/* 顶部任务条：任务类型标签（缩略图 / 修复） */
+.task-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-bg-secondary);
+  color: var(--lg-text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.task-chip--remux {
+  border-color: rgba(217, 119, 6, 0.45);
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.08);
+}
+.task-chip--duration {
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+}
+/* 单任务条：徽标 + 文本 + 进度条 + 汇总 单行（尽量不遮内容） */
+.task-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.task-pipeline-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-pipeline-track {
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--lg-bg-hover);
+}
+.task-pipeline-summary {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--lg-text-muted);
+  white-space: nowrap;
+}
+.task-pipeline-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.35rem;
+}
+/* 入库提示 banner（区别于完成闪示的绿色） */
+.task-incoming-banner {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+.task-incoming-icon {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+/* 顶部任务条：任务完成闪示（✓ 已完成，5s 后自动消失） */
+.task-done-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.task-done-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
 .duration-progress-hint {
   margin: 0.45rem 0 0;
   font-size: 0.72rem;

@@ -401,14 +401,35 @@ async def _playback_plan(path: Path) -> dict:
 
 
 def _on_library_changed(library_id: str) -> None:
-    """文件库变更：刷新索引，并为新/变更视频排队缩略图与格式分析。"""
+    """文件库变更：刷新索引，并为新/变更视频排队缩略图与格式分析。
+
+    严格串行：需重封装（修复）的视频先进 remux 队列，不进缩略图队列——
+    修复完成后文件替换触发 watchdog 重入库，此时才生成缩略图、随后探测时长，
+    避免「先做缩略图/时长、修复后又要重做一遍」。
+    """
+    from loc_gallery.remux_manager import enqueue_remux
+
     set_thread_library(library_id)
     refresh_cache(library_id)
     reconcile_deferred_thumbs()
     _prune_user_data(library_id)
     changed_ids = sync_index_with_videos()
-    if changed_ids:
-        schedule_ids(changed_ids, Priority.NORMAL)
+    thumb_ids: list[str] = []
+    for vid in changed_ids:
+        item = get_by_id(library_id, vid)
+        if not item:
+            continue
+        try:
+            plan = get_playback_plan(Path(item.path))
+            need_remux, _reason = can_remux_from_plan(plan)
+        except Exception:
+            need_remux = False
+        if need_remux:
+            enqueue_remux(library_id, vid)
+        else:
+            thumb_ids.append(vid)
+    if thumb_ids:
+        schedule_ids(thumb_ids, Priority.NORMAL)
         # Duration/format probes deferred — _process_one enqueues per-video after thumb generation
     _broadcast("version", library_id, str(get_version(library_id)))
     _broadcast("progress", library_id)
@@ -1394,6 +1415,14 @@ async def api_durations(
 async def api_duration_status(library_id: str = Depends(resolve_library_id)):
     """全库视频时长探测进度。"""
     return get_duration_status(library_id)
+
+
+@app.get("/api/remux/status")
+async def api_remux_status():
+    """全局重封装（修复）任务状态：顶部任务条聚合显示用。"""
+    from loc_gallery.remux_manager import get_global_status
+
+    return get_global_status()
 
 
 @app.post("/api/duration/scan")

@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { getThumbStatus, getDurationStatus, pauseThumbs, resumeThumbs } from '@/api/thumbs'
+import { getThumbStatus, getDurationStatus, getGlobalRemuxStatus, pauseThumbs, resumeThumbs } from '@/api/thumbs'
 import { t } from '@/i18n'
 import { useGalleryStore } from '@/stores/gallery'
 import { useSettingsStore } from '@/stores/settings'
@@ -9,10 +9,43 @@ export type ThumbProgressBarMode = 'auto' | 'always' | 'never'
 type ThumbProgress = Record<string, unknown>
 type DurationStatus = Record<string, unknown>
 
+export interface RemuxRunning {
+  library_id: string
+  video_id: string
+  title?: string
+  progress_pct?: number
+  message?: string
+}
+export interface RemuxStatus {
+  active?: boolean
+  running?: RemuxRunning[]
+  queued?: number
+  done_total?: number
+  failed_keys?: number
+}
+
 const thumbProgress = ref<ThumbProgress | null>(null)
 const durationStatus = ref<DurationStatus | null>(null)
+const remuxStatus = ref<RemuxStatus | null>(null)
 const userDismissed = ref(false)
 const manualExpand = ref(false)
+
+/** 最近完成的后台任务（顶部任务条显示「✓ 完成」闪示用） */
+export const lastCompleted = ref<{ task: 'all'; at: number } | null>(null)
+let completionTimer: ReturnType<typeof setTimeout> | null = null
+// 上一轮是否「任一任务忙碌」（忙碌→全空闲 即视为「处理完成」）
+let prevAnyBusy = false
+
+/** 新影片入库提示（SSE version 事件触发）：顶部任务条闪示「检测到新影片」 */
+export const incomingFlash = ref(false)
+let incomingTimer: ReturnType<typeof setTimeout> | null = null
+export function notifyIncoming() {
+  incomingFlash.value = true
+  if (incomingTimer) clearTimeout(incomingTimer)
+  incomingTimer = setTimeout(() => {
+    incomingFlash.value = false
+  }, 5000)
+}
 
 export function normalizeThumbProgressBar(mode: string | undefined): ThumbProgressBarMode {
   const m = (mode || 'auto').trim().toLowerCase()
@@ -100,11 +133,103 @@ export function useThumbProgress() {
 
   const thumbIdle = computed(() => isThumbProgressIdle(thumbProgress.value))
   const durationBusy = computed(() => isDurationWorkActive(durationStatus.value))
+  const remuxBusy = computed(() => {
+    const st = remuxStatus.value
+    if (!st) return false
+    if (st.active) return true
+    return ((st.running?.length ?? 0) > 0) || ((st.queued ?? 0) > 0)
+  })
+
+  function formatRemuxText(st: RemuxStatus | null) {
+    if (!st || (!st.active && !(st.running?.length ?? 0) && !(st.queued ?? 0))) {
+      return t('task.remuxIdle')
+    }
+    const running = st.running?.[0]
+    if (running) {
+      const pct = Math.round(running.progress_pct ?? 0)
+      const title = running.title || running.video_id
+      return t('task.remuxing', { title, p: pct })
+    }
+    return t('task.remuxQueued', { q: st.queued ?? 0 })
+  }
+
+  /** 任务从忙碌 → 全空闲 即视为「处理完成」：记录「✓ 全部处理完成」闪示（5s 后自动清除） */
+  function detectCompletion() {
+    const anyBusy = !thumbIdle.value || durationBusy.value || remuxBusy.value
+    if (prevAnyBusy && !anyBusy) {
+      lastCompleted.value = { task: 'all', at: Date.now() }
+      if (completionTimer) clearTimeout(completionTimer)
+      completionTimer = setTimeout(() => {
+        lastCompleted.value = null
+      }, 5000)
+    }
+    prevAnyBusy = anyBusy
+  }
+
+  /** 当前主导阶段（严格串行：修复 → 缩略图 → 时长；展示层按优先级显示当前阶段） */
+  const stage = computed<'repair' | 'thumb' | 'duration' | 'idle'>(() => {
+    if (remuxBusy.value) return 'repair'
+    if (!thumbIdle.value) return 'thumb'
+    if (durationBusy.value) return 'duration'
+    return 'idle'
+  })
+
+  /** 单任务条：当前阶段徽标文案 */
+  const stageLabel = computed(() => {
+    switch (stage.value) {
+      case 'repair':
+        return t('task.remuxLabel')
+      case 'thumb':
+        return t('task.thumbLabel')
+      case 'duration':
+        return t('task.durationLabel')
+      default:
+        return ''
+    }
+  })
+
+  /** 单任务条：当前阶段主文本 */
+  const pipelineText = computed(() => {
+    switch (stage.value) {
+      case 'repair':
+        return formatRemuxText(remuxStatus.value)
+      case 'thumb': {
+        const g = thumbProgress.value
+        if (g?.total) return t('thumb.progressAll', { r: g.ready, t: g.total, p: g.percent, page: '' })
+        return progressText.value
+      }
+      case 'duration':
+        return formatDurationProgressText(durationStatus.value)
+      default:
+        return ''
+    }
+  })
+
+  /** 单任务条：当前阶段进度（0-100） */
+  const stagePercent = computed(() => {
+    switch (stage.value) {
+      case 'repair':
+        return (remuxStatus.value?.running?.[0]?.progress_pct ?? 0)
+      case 'thumb':
+        return (thumbProgress.value?.percent as number) ?? 0
+      case 'duration':
+        return (durationStatus.value?.percent as number) ?? 0
+      default:
+        return 0
+    }
+  })
+
+  /** 单任务条：总况汇总（影片数 + 缩略图就绪，不统计时长） */
+  const pipelineSummary = computed(() => {
+    const g = thumbProgress.value
+    if (!g || !g.total) return ''
+    return t('task.summary', { t: g.total, r: g.ready ?? 0 })
+  })
 
   const showBar = computed(() => {
     if (mode.value === 'always') return true
-    if (mode.value === 'never') return durationBusy.value
-    if (!thumbIdle.value || durationBusy.value) return !userDismissed.value
+    if (mode.value === 'never') return durationBusy.value || remuxBusy.value
+    if (!thumbIdle.value || durationBusy.value || remuxBusy.value) return !userDismissed.value
     return manualExpand.value
   })
 
@@ -149,9 +274,16 @@ export function useThumbProgress() {
   })
 
   async function refresh() {
-    const [thumb, duration] = await Promise.all([getThumbStatus(), getDurationStatus()])
-    thumbProgress.value = thumb
-    durationStatus.value = duration
+    // allSettled：单个接口失败（如旧后端无 /api/remux/status）不影响其余状态更新
+    const [thumb, duration, remux] = await Promise.allSettled([
+      getThumbStatus(),
+      getDurationStatus(),
+      getGlobalRemuxStatus(),
+    ])
+    if (thumb.status === 'fulfilled') thumbProgress.value = thumb.value
+    if (duration.status === 'fulfilled') durationStatus.value = duration.value
+    if (remux.status === 'fulfilled') remuxStatus.value = remux.value
+    detectCompletion()
   }
 
   async function togglePause() {
@@ -177,6 +309,10 @@ export function useThumbProgress() {
   return {
     thumbProgress,
     durationStatus,
+    remuxStatus,
+    lastCompleted,
+    incomingFlash,
+    notifyIncoming,
     mode,
     showBar,
     showThumbChip,
@@ -185,8 +321,15 @@ export function useThumbProgress() {
     progressText,
     durationHint,
     durationBusy,
+    remuxBusy,
     thumbIdle,
+    stage,
+    stageLabel,
+    pipelineText,
+    stagePercent,
+    pipelineSummary,
     formatDurationProgressText,
+    formatRemuxText,
     refresh,
     togglePause,
     toggleBar,

@@ -31,7 +31,7 @@ const gallery = useGalleryStore()
 const library = useLibraryStore()
 const player = usePlayerStore()
 const route = useRoute()
-const { refresh: refreshThumbProgress } = useThumbProgress()
+const { refresh: refreshThumbProgress, notifyIncoming } = useThumbProgress()
 const { tryRestore } = usePlayerRestore()
 const { playIdFromUrl } = usePlayerUrlSync()
 const { closeTip } = usePathTip()
@@ -50,7 +50,9 @@ watch(
 )
 
 const { connect, disconnect } = useSSE(
-  () => {},
+  // 新影片入库（watchdog 广播 version）→ 顶部任务条闪示「检测到新影片，开始处理…」。
+  // 切库握手窗口已被 useSSE suppressVersionLoad 抑制，不会误触发。
+  () => notifyIncoming(),
   () => refreshThumbProgress(),
 )
 

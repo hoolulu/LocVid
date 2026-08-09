@@ -48,6 +48,8 @@ export const getThumbStats = () =>
 
 export const getDurationStatus = () => api<Record<string, unknown>>('/duration/status')
 
+export const getGlobalRemuxStatus = () => api<Record<string, unknown>>('/remux/status')
+
 
 export const scanFormat = () => api('/format/scan', { method: 'POST' })
 

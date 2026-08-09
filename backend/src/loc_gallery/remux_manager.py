@@ -309,6 +309,46 @@ def get_status(library_id: str, video_id: str) -> dict:
         return _job_to_dict(job, video_id)
 
 
+def get_global_status() -> dict:
+    """全局重封装（修复）任务状态：顶部任务条聚合显示用。
+
+    返回当前正在修复的视频、排队数、本轮累计完成数与失败黑名单数，
+    让前端在「新影片入库 → 后台自动修复」时能明确看到进展与完成态。
+    """
+    with _lock:
+        running: list[dict] = []
+        queued = 0
+        done_total = 0
+        for job in _jobs.values():
+            if job.state == "running":
+                running.append(
+                    {
+                        "library_id": job.library_id,
+                        "video_id": job.video_id,
+                        "progress_pct": round(job.progress_pct, 1),
+                        "message": job.message,
+                    }
+                )
+            elif job.state == "queued":
+                queued += 1
+            elif job.state in ("done", "error"):
+                done_total += 1
+    # 锁外补标题（scanner.get_by_id 有自己的锁，避免 _lock 内嵌套跨模块锁）
+    for r in running:
+        try:
+            item = get_by_id(r["library_id"], r["video_id"])
+            r["title"] = item.title if item else r["video_id"]
+        except Exception:
+            r["title"] = r["video_id"]
+    return {
+        "active": bool(running) or queued > 0,
+        "running": running,
+        "queued": queued,
+        "done_total": done_total,
+        "failed_keys": len(_remux_failed_keys),
+    }
+
+
 def start_remux(library_id: str, video_id: str) -> dict:
     ok, reason = can_remux_video(library_id, video_id)
     if not ok:
@@ -367,6 +407,34 @@ _AUTO_REMUX_PAUSE_SEC = 5  # 每个文件修复完成后稍候再取下一个
 # 修复失败黑名单：(library_id, video_id, mtime, size) —— 同一文件（未变化）不再反复重试
 _remux_failed_keys: set[tuple[str, str, float, int]] = set()
 
+# 入库分流排队的待修复视频：(library_id, video_id) —— 修复完成（watchdog 重入库）后再做缩略图/时长
+_remux_queue: list[tuple[str, str]] = []
+_remux_queue_event = threading.Event()
+
+
+def enqueue_remux(library_id: str, video_id: str) -> None:
+    """标记视频待修复（新入库分流时调用）。修复完成后文件替换 → watchdog 重入库 → 再做缩略图/时长。"""
+    with _lock:
+        if (library_id, video_id) not in _remux_queue:
+            _remux_queue.append((library_id, video_id))
+    _remux_queue_event.set()
+
+
+def is_pending_or_running(library_id: str, video_id: str) -> bool:
+    """该视频是否处于「待修复/修复中」——缩略图 worker 据此跳过，等修复完成后再生成。"""
+    with _lock:
+        if (library_id, video_id) in _remux_queue:
+            return True
+        job = _jobs.get(_job_key(library_id, video_id))
+        return job is not None and job.state in ("queued", "running")
+
+
+def _pop_remux_queue() -> tuple[str, str] | None:
+    with _lock:
+        if _remux_queue:
+            return _remux_queue.pop(0)
+        return None
+
 
 def start_auto_remux_worker() -> None:
     """启动后台批量预修复线程（幂等）。"""
@@ -395,6 +463,14 @@ def _auto_remux_loop() -> None:
     from loc_gallery.library_context import set_thread_library
 
     while not _auto_remux_stop.is_set():
+        # 优先处理入库分流排队的待修复视频（修复 → 重入库 → 缩略图/时长，严格串行）
+        while not _auto_remux_stop.is_set():
+            item_key = _pop_remux_queue()
+            if item_key is None:
+                break
+            _repair_one(*item_key)
+        # 队列空 → 常规轮询全库扫描兜底
+        _remux_queue_event.clear()
         _auto_remux_stop.wait(_AUTO_REMUX_INTERVAL_SEC)
         if _auto_remux_stop.is_set():
             break
@@ -415,6 +491,40 @@ def _auto_remux_loop() -> None:
             import traceback
 
             traceback.print_exc()
+
+
+def _repair_one(library_id: str, video_id: str) -> None:
+    """修复单个入队视频：先确认仍需修复（文件可能已被处理），再串行执行并等待完成。"""
+    from loc_gallery.library_context import set_thread_library
+    from loc_gallery.scanner import get_by_id
+
+    if _auto_remux_stop.is_set():
+        return
+    set_thread_library(library_id)
+    try:
+        item = get_by_id(library_id, video_id)
+        if not item:
+            return
+        path = Path(item.path).resolve()
+        if not path.is_file():
+            return
+        st = path.stat()
+        key = (library_id, video_id, st.st_mtime, st.st_size)
+        if key in _remux_failed_keys:
+            return
+        plan = get_playback_plan(path)
+        ok, _reason = can_remux_from_plan(plan)
+        if not ok:
+            return
+        result = start_remux(library_id, video_id)
+        if result.get("busy") or result.get("error"):
+            return
+        # 等待该任务完成（start_remux 内部已限单并行；修复期间缩略图/时长对该视频跳过）
+        _auto_remux_stop.wait(_AUTO_REMUX_PAUSE_SEC)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
 
 
 def _scan_library_for_remux(library_id: str, get_all, set_thread_library) -> None:
