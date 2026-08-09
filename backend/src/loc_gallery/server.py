@@ -1701,6 +1701,29 @@ async def api_thumb_failed(library_id: str = Depends(resolve_library_id)):
     return {"items": items, "total": len(items)}
 
 
+@app.get("/api/thumb/stats")
+async def api_thumb_stats(library_id: str = Depends(resolve_library_id)):
+    """缩略图缓存占用统计（设置页维护入口用）。"""
+    from loc_gallery.config import thumb_dir
+    tdir = thumb_dir(library_id)
+    files = 0
+    total = 0
+    if tdir.exists():
+        for p in tdir.rglob("*"):
+            if not p.is_file():
+                continue
+            files += 1
+            try:
+                total += p.stat().st_size
+            except OSError:
+                pass
+    return {"files": files, "bytes": total}
+
+
+
+
+
+
 @app.get("/api/thumb/{video_id}")
 async def api_thumb(video_id: str, library_id: str = Depends(resolve_library_id)):
     path = _thumb_file(video_id, library_id)
@@ -1993,25 +2016,6 @@ async def api_thumb_cleanup(library_id: str = Depends(resolve_library_id)):
     removed = cleanup_orphans()
     sync_index_with_videos()
     return {"removed": removed}
-
-
-@app.get("/api/thumb/stats")
-async def api_thumb_stats(library_id: str = Depends(resolve_library_id)):
-    """缩略图缓存占用统计（设置页维护入口用）。"""
-    from loc_gallery.config import thumb_dir
-    tdir = thumb_dir(library_id)
-    files = 0
-    total = 0
-    if tdir.exists():
-        for p in tdir.rglob("*"):
-            if not p.is_file():
-                continue
-            files += 1
-            try:
-                total += p.stat().st_size
-            except OSError:
-                pass
-    return {"files": files, "bytes": total}
 
 
 @app.post("/api/thumb/{video_id}/candidates")
