@@ -16,7 +16,7 @@ function onCancel() {
 <template>
   <div
     v-if="ui.confirmDialog"
-    class="lg-modal-overlay"
+    class="lg-modal-overlay lg-modal-overlay--top"
     @click.self="onCancel"
   >
     <div class="lg-confirm-dialog" role="alertdialog" aria-modal="true">

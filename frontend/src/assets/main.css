@@ -1101,6 +1101,11 @@ body.manage-mode .card-album-badge {
   padding: 1rem;
   background: rgba(0, 0, 0, 0.55);
 }
+/* 确认/通用顶层对话框：在任何业务对话框（z-260）之上，确保不被配置页等遮住
+   （此前重启服务的确认框与 SettingsDialog 同 z-index，被配置页 stacking context 遮挡，P 修复） */
+.lg-modal-overlay--top {
+  z-index: 320;
+}
 /* 通用确认对话框（替代原生 confirm） */
 .lg-confirm-dialog {
   width: min(24rem, 92vw);
