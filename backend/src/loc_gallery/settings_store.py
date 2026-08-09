@@ -121,6 +121,10 @@ def _load_global() -> dict:
     if SETTINGS_FILE.exists():
         try:
             data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            # 防损坏文件（合法 JSON 但非 dict，如 []/"x"/数字）：直接抛 AttributeError
+            # 且不被 JSONDecodeError 分支捕获 → 全模块 500（P2）
+            if not isinstance(data, dict):
+                data = {}
             merged = deepcopy(_DEFAULTS)
             # 只保留已知键，自动清除旧版本遗留（如 player_mode/hls_* 等已废弃项）
             merged.update({k: v for k, v in data.items() if k in _DEFAULTS})
@@ -175,17 +179,22 @@ def save_settings(data: dict, library_id: str | None = None) -> dict:
             path = library_settings_file(library_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             overrides = {k: data[k] for k in _LIBRARY_OVERRIDE_KEYS if k in data}
-            path.write_text(json.dumps(overrides, ensure_ascii=False, indent=2), encoding="utf-8")
+            # 原子写（tmp+replace）：进程中断/断电时不截断 JSON，避免下次启动整份设置回退默认（P2）
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(overrides, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(path)
             merged = _load_global()
             merged.update(overrides)
             return merged
         merged = deepcopy(_DEFAULTS)
         merged.update(data)
         SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        SETTINGS_FILE.write_text(
+        tmp = SETTINGS_FILE.with_suffix(".json.tmp")
+        tmp.write_text(
             json.dumps(merged, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        tmp.replace(SETTINGS_FILE)
         return merged
 
 

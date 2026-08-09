@@ -630,7 +630,7 @@ def _rebuild_status_cache() -> None:
         counts["queue_size"] = len(_queue)
         counts["generating"] = len(_generating)
         queued_ids = {q.video_id for q in _queue}
-        generating_ids = set(_generating)
+        generating_ids = {k.split(":", 1)[-1] for k in _generating}
         idx_snapshot = dict(_idx())
 
     for item in items:
@@ -681,7 +681,7 @@ def get_status(category: str | None = None, page_ids: list[str] | None = None) -
         }
         with _lock:
             queued_ids = {q.video_id for q in _queue}
-            generating_ids = set(_generating)
+            generating_ids = {k.split(":", 1)[-1] for k in _generating}
         for vid in page_ids:
             item = get_by_id(_lid(), vid)
             if _has_usable_thumb(vid):
@@ -729,7 +729,7 @@ def get_status(category: str | None = None, page_ids: list[str] | None = None) -
     }
     with _lock:
         queued_ids = {q.video_id for q in _queue}
-        generating_ids = set(_generating)
+        generating_ids = {k.split(":", 1)[-1] for k in _generating}
     for item in items:
         vid = item.id
         if _has_usable_thumb(vid):
@@ -1620,6 +1620,7 @@ def _try_capture_thumb(item: VideoItem, seek: float, output: Path, use_mpegts: b
         str(wip),
     ]
     timeout = _capture_timeout(seek, item.size)
+    p: subprocess.Popen | None = None
     try:
         p = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -1644,8 +1645,11 @@ def _try_capture_thumb(item: VideoItem, seek: float, output: Path, use_mpegts: b
         _last_capture_error = f"ffmpeg 超时 ({timeout}s)，位置 {seek:.0f}s"
         return False
     except Exception as exc:
-        from loc_gallery.process_util import kill_process_tree
-        kill_process_tree(p.pid)
+        # Popen 本身抛错（ffmpeg 不可执行/句柄不足）时 p 为 None——必须判空，
+        # 否则 kill_process_tree(p.pid) 触发 NameError，真实错误被吞且视频误标 FAILED（P2）
+        if p is not None:
+            from loc_gallery.process_util import kill_process_tree
+            kill_process_tree(p.pid)
         wip.unlink(missing_ok=True)
         _last_capture_error = str(exc)
         return False

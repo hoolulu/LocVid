@@ -1186,16 +1186,17 @@ async def api_folders_rename(
     if not lib:
         raise HTTPException(404, "视频库不存在")
 
+    from loc_gallery.file_ops import _resolve_under_root
     if ftype == "cat":
         # Rename top-level category directory
-        old_dir = lib.path_obj / old_path
-        new_dir = lib.path_obj / new_name
+        old_dir = _resolve_under_root(library_id, lib.path_obj / old_path)
+        new_dir = _resolve_under_root(library_id, lib.path_obj / new_name)
     else:
-        cat_dir = lib.path_obj / category
+        cat_dir = _resolve_under_root(library_id, lib.path_obj / category)
         if not cat_dir.is_dir():
             raise HTTPException(404, "分类目录不存在")
-        old_dir = cat_dir / old_path
-        new_dir = cat_dir / new_name
+        old_dir = _resolve_under_root(library_id, cat_dir / old_path)
+        new_dir = _resolve_under_root(library_id, cat_dir / new_name)
 
     if not old_dir.is_dir():
         raise HTTPException(404, f"目录不存在: {old_path}")
@@ -1227,13 +1228,14 @@ async def api_folders_move(
     if not lib:
         raise HTTPException(404, "视频库不存在")
 
+    from loc_gallery.file_ops import _resolve_under_root
     if ftype == "cat":
-        src = lib.path_obj / src_path
-        dest = lib.path_obj / dest_path / src.name if dest_path else lib.path_obj / src.name
+        src = _resolve_under_root(library_id, lib.path_obj / src_path)
+        dest = _resolve_under_root(library_id, lib.path_obj / dest_path / src.name) if dest_path else _resolve_under_root(library_id, lib.path_obj / src.name)
     else:
-        cat_dir = lib.path_obj / category
-        src = cat_dir / src_path
-        dest = lib.path_obj / dest_path / src.name if dest_path else lib.path_obj / src.name
+        cat_dir = _resolve_under_root(library_id, lib.path_obj / category)
+        src = _resolve_under_root(library_id, cat_dir / src_path)
+        dest = _resolve_under_root(library_id, lib.path_obj / dest_path / src.name) if dest_path else _resolve_under_root(library_id, cat_dir / src.name)
 
     if not src.is_dir():
         raise HTTPException(404, f"目录不存在: {src_path}")

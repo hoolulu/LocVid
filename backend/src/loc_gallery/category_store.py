@@ -24,6 +24,9 @@ def _load_raw(library_id: str) -> dict:
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
+            # 防损坏文件（合法 JSON 但非 dict）：update 抛 TypeError 不被捕获 → 全模块 500
+            if not isinstance(data, dict):
+                data = {}
             merged = deepcopy(_DEFAULTS)
             merged.update(data)
             if merged["sort_mode"] not in SORT_MODES:
@@ -41,7 +44,10 @@ def _save_raw(library_id: str, data: dict) -> dict:
     merged.update(data)
     if merged["sort_mode"] not in SORT_MODES:
         merged["sort_mode"] = "custom"
-    path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 原子写（tmp+replace）：防进程中断截断 JSON → 分类排序/星标回退默认（P2）
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
     return merged
 
 
