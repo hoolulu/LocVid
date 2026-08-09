@@ -15,7 +15,7 @@ English first, Chinese after. All screenshots are captured against real data in 
 </tr>
 <tr>
   <td><img src="screenshots/hover-preview.png" width="100%" alt="Hover preview"/><br/><sub><b>EN</b> Hover preview — preview frame + progress on card hover<br/><b>中文</b> 悬停预览 — 鼠标悬停显示预览画面与进度</sub></td>
-  <td><img src="screenshots/search-suggest.png" width="100%" alt="Search suggestions"/><br/><sub><b>EN</b> Search suggestions — keyword suggestions &amp; search history<br/><b>中文</b> 搜索建议 — 关键字建议 + 搜索历史</sub></td>
+  <td><img src="screenshots/settings.png" width="100%" alt="Settings"/><br/><sub><b>EN</b> Settings — library / playback / thumbnail / other tabs<br/><b>中文</b> 设置 — 视频库 / 播放 / 缩略图 / 其他 4 个标签页</sub></td>
 </tr>
 <tr>
   <td><img src="screenshots/sidebar-filter.png" width="100%" alt="Sidebar filter"/><br/><sub><b>EN</b> Sidebar filter — live category/folder filtering<br/><b>中文</b> 侧栏过滤 — 实时过滤分类/文件夹</sub></td>
