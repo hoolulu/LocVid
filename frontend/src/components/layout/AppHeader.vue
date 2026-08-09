@@ -6,6 +6,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore, type ThemePreset } from '@/stores/settings'
 import { useUiStore } from '@/stores/ui'
 import { useAlbumStore } from '@/stores/album'
+import { suppressVersionLoad } from '@/composables/useSSE'
 import { rescan, getSearchSuggest } from '@/api'
 import HeaderProgressChips from '@/components/layout/HeaderProgressChips.vue'
 import HeaderProgressBar from '@/components/layout/HeaderProgressBar.vue'
@@ -118,6 +119,8 @@ function onSearchEnter(e: KeyboardEvent) {
 async function onLibraryChange(e: Event) {
   const id = (e.target as HTMLSelectElement).value
   await library.switchLibrary(id)
+  // 抑制 SSE 重连握手触发的二次列表加载（否则图片显示后被刷新一次 = 轻微闪烁）
+  suppressVersionLoad()
   gallery.clearFolderCaches()
   gallery.category = null
   gallery.folder = null

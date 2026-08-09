@@ -4,6 +4,14 @@ import { useLibraryStore } from '@/stores/library'
 
 let versionDebounce: ReturnType<typeof setTimeout> | null = null
 let lastVersion = ''
+// 切库后抑制 SSE 握手触发二次列表加载：切库（activeLibraryId 变化）会触发 SSE 重连，
+// 新连接握手推 version（新库版本≠旧库 lastVersion → changed=true）→ 500ms 后重复 loadVideos
+// → 图片显示后又被刷新一次（"轻微刷新动作"）。切库业务层已 loadVideos，握手不应再触发。
+let suppressVersionLoadUntil = 0
+
+export function suppressVersionLoad(ms = 2000) {
+  suppressVersionLoadUntil = Date.now() + ms
+}
 
 export function useSSE(onVersion?: () => void, onProgress?: () => void) {
   const connected = ref(false)
@@ -30,6 +38,11 @@ export function useSSE(onVersion?: () => void, onProgress?: () => void) {
         if (lid && lid !== library.activeLibraryId) return
         if (versionDebounce) clearTimeout(versionDebounce)
         versionDebounce = setTimeout(async () => {
+          // 切库握手窗口内：不重复加载列表（业务层已 loadVideos）
+          if (Date.now() < suppressVersionLoadUntil) {
+            lastVersion = ver
+            return
+          }
           const changed = ver && ver !== lastVersion
           lastVersion = ver
           await gallery.loadCategories()
