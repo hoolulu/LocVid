@@ -1187,16 +1187,20 @@ async def api_folders_rename(
         raise HTTPException(404, "视频库不存在")
 
     from loc_gallery.file_ops import _resolve_under_root
-    if ftype == "cat":
-        # Rename top-level category directory
-        old_dir = _resolve_under_root(library_id, lib.path_obj / old_path)
-        new_dir = _resolve_under_root(library_id, lib.path_obj / new_name)
-    else:
-        cat_dir = _resolve_under_root(library_id, lib.path_obj / category)
-        if not cat_dir.is_dir():
-            raise HTTPException(404, "分类目录不存在")
-        old_dir = _resolve_under_root(library_id, cat_dir / old_path)
-        new_dir = _resolve_under_root(library_id, cat_dir / new_name)
+    try:
+        if ftype == "cat":
+            # Rename top-level category directory
+            old_dir = _resolve_under_root(library_id, lib.path_obj / old_path)
+            new_dir = _resolve_under_root(library_id, lib.path_obj / new_name)
+        else:
+            cat_dir = _resolve_under_root(library_id, lib.path_obj / category)
+            if not cat_dir.is_dir():
+                raise HTTPException(404, "分类目录不存在")
+            old_dir = _resolve_under_root(library_id, cat_dir / old_path)
+            new_dir = _resolve_under_root(library_id, cat_dir / new_name)
+    except ValueError as ve:
+        # 路径越界（.. 逃逸库根）：拦截并返回 400，而非 500
+        raise HTTPException(400, f"路径越界: {ve}")
 
     if not old_dir.is_dir():
         raise HTTPException(404, f"目录不存在: {old_path}")
@@ -1229,13 +1233,16 @@ async def api_folders_move(
         raise HTTPException(404, "视频库不存在")
 
     from loc_gallery.file_ops import _resolve_under_root
-    if ftype == "cat":
-        src = _resolve_under_root(library_id, lib.path_obj / src_path)
-        dest = _resolve_under_root(library_id, lib.path_obj / dest_path / src.name) if dest_path else _resolve_under_root(library_id, lib.path_obj / src.name)
-    else:
-        cat_dir = _resolve_under_root(library_id, lib.path_obj / category)
-        src = _resolve_under_root(library_id, cat_dir / src_path)
-        dest = _resolve_under_root(library_id, lib.path_obj / dest_path / src.name) if dest_path else _resolve_under_root(library_id, cat_dir / src.name)
+    try:
+        if ftype == "cat":
+            src = _resolve_under_root(library_id, lib.path_obj / src_path)
+            dest = _resolve_under_root(library_id, lib.path_obj / dest_path / src.name) if dest_path else _resolve_under_root(library_id, lib.path_obj / src.name)
+        else:
+            cat_dir = _resolve_under_root(library_id, lib.path_obj / category)
+            src = _resolve_under_root(library_id, cat_dir / src_path)
+            dest = _resolve_under_root(library_id, lib.path_obj / dest_path / src.name) if dest_path else _resolve_under_root(library_id, cat_dir / src.name)
+    except ValueError as ve:
+        raise HTTPException(400, f"路径越界: {ve}")
 
     if not src.is_dir():
         raise HTTPException(404, f"目录不存在: {src_path}")
