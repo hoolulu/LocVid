@@ -45,7 +45,7 @@ function createMoviElement(): MoviElement {
     typeof customElements !== 'undefined' && !!customElements.get('movi-player')
   if (!registered) {
     console.error(
-      '[LocGallery] <movi-player> 尚未注册，播放将无法初始化（customElements.define 可能未执行）',
+      '[LocVid] <movi-player> 尚未注册，播放将无法初始化（customElements.define 可能未执行）',
     )
   }
   try {
@@ -54,13 +54,13 @@ function createMoviElement(): MoviElement {
       return el
     }
     console.warn(
-      '[LocGallery] createElement 产物不可用（构造函数未执行，got ' +
+      '[LocVid] createElement 产物不可用（构造函数未执行，got ' +
         el.constructor.name +
         '），回退到 new MoviElement()',
     )
   } catch (err) {
     console.warn(
-      '[LocGallery] document.createElement("movi-player") 抛错，回退到 new MoviElement()',
+      '[LocVid] document.createElement("movi-player") 抛错，回退到 new MoviElement()',
       err,
     )
   }

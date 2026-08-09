@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useThumbProgress } from '@/composables/useThumbProgress'
+import { t } from '@/i18n'
 import { useUiStore } from '@/stores/ui'
 
 const ui = useUiStore()
@@ -26,9 +27,9 @@ const {
         <span
           v-if="thumbProgress?.idle_scan"
           class="idle-scan-badge"
-          title="正在后台补全全库缩略图"
+          :title="t('thumb.progressTip')"
         >
-          后台补全
+          {{ t('thumb.backfill') }}
         </span>
       </div>
       <div class="progress-actions">
@@ -38,7 +39,7 @@ const {
           class="progress-btn"
           @click="togglePause"
         >
-          暂停
+          {{ t('thumb.pause') }}
         </button>
         <button
           v-else
@@ -46,7 +47,7 @@ const {
           class="progress-btn"
           @click="togglePause"
         >
-          继续
+          {{ t('thumb.resume') }}
         </button>
         <button
           v-if="((thumbProgress?.failed as number) ?? 0) > 0"
@@ -54,7 +55,7 @@ const {
           class="progress-btn"
           @click="ui.thumbFailedOpen = true"
         >
-          失败 {{ thumbProgress?.failed }}
+          {{ t('thumb.failedCount', { n: thumbProgress?.failed as number }) }}
         </button>
       </div>
     </div>

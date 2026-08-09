@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { useUiStore } from '@/stores/ui'
 
 const ui = useUiStore()
@@ -29,14 +30,14 @@ function onCancel() {
           class="rounded border border-[var(--lg-border)] px-3 py-1.5 text-sm lg-hover"
           @click="onCancel"
         >
-          取消
+          {{ t('common.cancel') }}
         </button>
         <button
           type="button"
           class="rounded bg-[var(--lg-accent)] px-3 py-1.5 text-sm text-[var(--lg-text-on-accent)]"
           @click="onOk"
         >
-          确定
+          {{ t('common.confirm') }}
         </button>
       </div>
     </div>

@@ -7,6 +7,8 @@ import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import CategorySidebar from '@/components/layout/CategorySidebar.vue'
 
+import { t } from '@/i18n'
+
 import VideoCard from '@/components/gallery/VideoCard.vue'
 import BrowsePagination from '@/components/gallery/BrowsePagination.vue'
 
@@ -106,7 +108,7 @@ async function changePage(next: number) {
 
 async function removeFromAlbum(id: string) {
   const albumId = route.params.id as string
-  const ok = await ui.showConfirm('从专辑中移除此视频？')
+  const ok = await ui.showConfirm(t('album.removeVideoConfirm'))
   if (!ok) return
   await removeVideosFromAlbum(albumId, [id])
   await gallery.loadVideos()
@@ -122,8 +124,8 @@ function onVideoContext(e: MouseEvent, videoId: string) {
     e,
     [
       ...videoContextMenuItems(video),
-      { label: '设为封面', action: 'set-cover' },
-      { label: '从专辑移除', action: 'remove', danger: true },
+      { label: t('album.setCover'), action: 'set-cover' },
+      { label: t('album.removeVideo'), action: 'remove', danger: true },
     ],
     { targetId: videoId, targetType: 'video' },
   )
@@ -141,7 +143,7 @@ async function onContextAction(ev: Event) {
     const albumId = route.params.id as string
     await setAlbumCover(albumId, id)
     await album.loadAlbum(albumId)
-    ui.showToast('封面已更新')
+    ui.showToast(t('album.coverUpdated'))
   }
 }
 
@@ -161,7 +163,7 @@ async function onContextAction(ev: Event) {
 
       <button class="mb-4 shrink-0 self-start text-sm text-[var(--lg-text-muted)] hover:text-[var(--lg-text-primary)]" @click="router.push('/albums')">
 
-        ← 返回专辑列表
+        ← {{ t('album.backToList') }}
 
       </button>
 
@@ -173,11 +175,11 @@ async function onContextAction(ev: Event) {
 
           <p class="text-sm text-[var(--lg-text-muted)]">
 
-            {{ album.currentAlbum?.video_count }} 个视频
+            {{ t('album.videoCount', { n: album.currentAlbum?.video_count || 0 }) }}
 
             <span v-if="album.currentAlbum?.total_duration_sec">
 
-              · {{ Math.floor((album.currentAlbum.total_duration_sec || 0) / 60) }} 分钟
+              · {{ t('album.minutes', { n: Math.floor((album.currentAlbum.total_duration_sec || 0) / 60) }) }}
 
             </span>
 
@@ -193,7 +195,7 @@ async function onContextAction(ev: Event) {
 
         >
 
-          播放全部
+          {{ t('album.playAll') }}
 
         </button>
 

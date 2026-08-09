@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { getThumbStatus, getDurationStatus, pauseThumbs, resumeThumbs } from '@/api/thumbs'
+import { t } from '@/i18n'
 import { useGalleryStore } from '@/stores/gallery'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -67,26 +68,26 @@ function isDurationWorkActive(st: DurationStatus | null) {
 }
 
 function formatDurationProgressText(st: DurationStatus | null) {
-  if (!st) return '时长探测: 加载中…'
+  if (!st) return t('thumb.probeLoading')
   if (st.fallback) {
-    return `当前页时长补全 ${st.cached}/${st.total} (${st.percent ?? 0}%)`
+    return t('thumb.probePage', { c: st.cached, t: st.total, p: st.percent ?? 0 })
   }
   const remaining = Math.max(0, ((st.remaining as number) ?? (st.pending as number)) ?? 0)
   const workersTotal = (st.workers_total as number) ?? (st.worker_count as number) ?? 2
   const workersActive = (st.workers_active as number) ?? (st.probing as number) ?? 0
   const rate = Number(st.rate_per_min) || 0
-  let detail = ` | 剩余 ${remaining}`
+  let detail = t('thumb.probeRemain', { n: remaining })
   if (rate > 0) {
-    detail += ` · 约 ${rate} 个/分钟`
+    detail += t('thumb.probeRate', { n: rate })
     const etaMin = Math.ceil(remaining / rate)
-    if (etaMin > 0 && etaMin < 9999) detail += ` · 预计 ${etaMin} 分钟`
+    if (etaMin > 0 && etaMin < 9999) detail += t('thumb.probeEta', { n: etaMin })
   }
-  detail += ` · ffprobe ${workersTotal} 路并行`
+  detail += t('thumb.probeWorkers', { n: workersTotal })
   if (workersActive > 0) {
-    detail += `（${workersActive} 路 ffprobe 运行中）`
+    detail += t('thumb.probeActive', { n: workersActive })
   }
-  const skipPart = st.skipped ? ` · 跳过 ${st.skipped}（下载中/不可处理）` : ''
-  return `时长探测 ${st.cached ?? 0}/${st.total ?? 0} (${st.percent ?? 0}%)${detail}${skipPart}`
+  const skipPart = st.skipped ? t('thumb.probeSkipped', { n: st.skipped }) : ''
+  return t('thumb.probeText', { c: st.cached ?? 0, t: st.total ?? 0, p: st.percent ?? 0, d: detail, s: skipPart })
 }
 
 export function useThumbProgress() {
@@ -118,33 +119,33 @@ export function useThumbProgress() {
   })
 
   const thumbChipTitle = computed(() => {
-    if (!thumbIdle.value && userDismissed.value) return '缩略图生成中，点击展开进度'
-    if (showBar.value) return '点击收起缩略图进度'
-    return '缩略图状态，点击展开详情'
+    if (!thumbIdle.value && userDismissed.value) return t('thumb.statusIdle')
+    if (showBar.value) return t('thumb.statusHide')
+    return t('thumb.statusDetail')
   })
 
   const progressText = computed(() => {
     const g = thumbProgress.value
     const page = computePageThumbStats()
     if (g?.total) {
-      const pagePart = page.total ? ` | 当前页 ${page.ready}/${page.total}` : ''
+      const pagePart = page.total ? t('thumb.progressPagePart', { r: page.ready, t: page.total }) : ''
       let text =
-        `全库 ${g.ready}/${g.total} (${g.percent}%)${pagePart}` +
-        ` | 队列 ${g.queue_size ?? 0} | 生成中 ${g.generating ?? 0}` +
-        ` | 未开始 ${g.missing ?? 0}`
-      if (!thumbIdle.value && isPageThumbActive()) text += ' · 当前页生成中'
+        t('thumb.progressAll', { r: g.ready, t: g.total, p: g.percent, page: pagePart }) +
+        t('thumb.progressQueue', { q: g.queue_size ?? 0, g: g.generating ?? 0 }) +
+        t('thumb.progressMissing', { n: g.missing ?? 0 })
+      if (!thumbIdle.value && isPageThumbActive()) text += t('thumb.progressActive')
       return text
     }
-    if (isPageThumbActive()) return `当前页 ${page.ready}/${page.total} · 缩略图生成中…`
-    return '缩略图: 加载中…'
+    if (isPageThumbActive()) return t('thumb.progressPageActive', { r: page.ready, t: page.total })
+    return t('thumb.progressLoading')
   })
 
   const durationHint = computed(() => {
     const st = durationStatus.value
     if (st?.fallback) {
-      return '当前仅显示本页进度。请运行 python restart.py 加载新版服务后，可查看全库时长探测进度。'
+      return t('thumb.legacyHint')
     }
-    return '后台用 ffprobe 逐条探测（默认 2 路并行，大文件单次可能较慢）；结果写入缩略图索引，已有播放记录会先复用。'
+    return t('thumb.probeHint')
   })
 
   async function refresh() {

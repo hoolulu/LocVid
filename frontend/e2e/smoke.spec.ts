@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test('首页加载并显示视频库', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Loc Gallery')).toBeVisible()
+  await expect(page.getByText('LocVid')).toBeVisible()
   await expect(page.getByTestId('search-input')).toBeVisible()
 })
 

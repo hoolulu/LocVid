@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Loc Gallery Vue 端口（对外仅一个）。"""
+"""LocVid Vue 端口（对外仅一个）。"""
 
 # 浏览器只访问这个地址
 APP_PORT = 3460

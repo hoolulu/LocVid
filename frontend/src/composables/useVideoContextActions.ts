@@ -3,6 +3,7 @@ import { openFolder, renameVideo, deleteVideos } from '@/api/files'
 import { regenerateThumbSmart } from '@/composables/useThumbRegenerate'
 import { useGalleryPlay } from '@/composables/useGalleryPlay'
 import { usePlayback } from '@/composables/usePlayback'
+import { t } from '@/i18n'
 import { useGalleryStore } from '@/stores/gallery'
 import { usePlayerStore } from '@/stores/player'
 import { useUiStore, type ContextMenuItem } from '@/stores/ui'
@@ -10,21 +11,21 @@ import type { Video } from '@/types'
 
 export function videoContextMenuItems(video?: Video): ContextMenuItem[] {
   return [
-    { label: '播放', action: 'play' },
-    { label: '换缩略图', action: 'regen-thumb' },
+    { label: t('menu.play'), action: 'play' },
+    { label: t('menu.regenThumb'), action: 'regen-thumb' },
     // 按当前状态动态文案（业内惯例：已收藏/已加入专辑时显示操作反向）
-    { label: video?.favorited ? '取消收藏' : '收藏', action: 'favorite' },
+    { label: video?.favorited ? t('menu.unfavorite') : t('menu.favorite'), action: 'favorite' },
     {
-      label: video?.albumIds?.length ? `管理专辑（${video.albumIds.length}）` : '加入专辑',
+      label: video?.albumIds?.length ? t('album.manage', { n: video.albumIds.length }) : t('album.add'),
       action: 'add-album',
     },
-    { label: '重命名', action: 'rename' },
-    { label: '移动到分类', action: 'move' },
-    { label: '打开所在文件夹', action: 'open-folder' },
-    { label: '复制文件路径', action: 'copy-path' },
-    { label: '复制标题', action: 'copy-title' },
-    { label: '属性', action: 'props' },
-    { label: '删除', action: 'delete', danger: true },
+    { label: t('menu.rename'), action: 'rename' },
+    { label: t('menu.moveCategory'), action: 'move' },
+    { label: t('menu.openFolder'), action: 'open-folder' },
+    { label: t('menu.copyPath'), action: 'copy-path' },
+    { label: t('menu.copyTitle'), action: 'copy-title' },
+    { label: t('menu.props'), action: 'props' },
+    { label: t('menu.delete'), action: 'delete', danger: true },
   ]
 }
 
@@ -35,7 +36,7 @@ export function showVideoContextMenu(e: MouseEvent, videoId: string) {
   const video =
     gallery.videos.find((v) => v.id === videoId) ??
     player.playlist.find((v) => v.id === videoId) ??
-    (player.playingId === videoId ? player.playingItem : undefined)
+    (player.playingId === videoId ? (player.playingItem ?? undefined) : undefined)
   ui.showContextMenu(e, videoContextMenuItems(video), { targetId: videoId, targetType: 'video' })
 }
 
@@ -112,12 +113,12 @@ export function setupVideoContextActions() {
       const item = findVideo(id, gallery, player)
       const path = item?.path || item?.filename || ''
       await copyTextToClipboard(path)
-      ui.showToast(path ? '文件路径已复制' : '未找到文件路径')
+      ui.showToast(path ? t('menu.pathCopied') : t('menu.pathNotFound'))
     } else if (detail.action === 'copy-title') {
       const item = findVideo(id, gallery, player)
       const title = item?.title || ''
       await copyTextToClipboard(title)
-      ui.showToast(title ? '标题已复制' : '未找到标题')
+      ui.showToast(title ? t('menu.titleCopied') : t('menu.titleNotFound'))
     } else if (detail.action === 'props') {
       ui.openVideoProps(id)
     } else if (detail.action === 'regen-thumb') {
@@ -128,7 +129,7 @@ export function setupVideoContextActions() {
       // 默认值不含后缀（用户改的是主名），提示语说明扩展名会自动保留
       const suffix = item?.filename?.match(/\.[^.]+$/)?.[0] || ''
       const defaultStem = suffix ? (item?.filename ?? '').slice(0, -suffix.length) : (item?.filename ?? '')
-      const name = prompt(`新文件名（扩展名 ${suffix || '将自动保留'}）`, defaultStem || item?.title || '')
+      const name = prompt(t('menu.renamePrompt', { ext: suffix || t('menu.extKept') }), defaultStem || item?.title || '')
       if (name) {
         // 后端始终保留原扩展名：按 stem（去掉扩展名）传参，避免 "xxx.mp4" 被追加成 "xxx.mp4.mp4"
         const stem =
@@ -141,14 +142,14 @@ export function setupVideoContextActions() {
         const newId = res.id ?? id
         patchVideoInPlayer(id, { id: newId, filename: stem + suffix, title: stem })
         await gallery.loadVideos()
-        ui.showToast('已重命名')
+        ui.showToast(t('menu.renamed'))
       }
     } else if (detail.action === 'move') {
       ui.openFolderMove({ mode: 'videos', videoIds: [id], category: gallery.category || undefined })
     } else if (detail.action === 'delete') {
       const ok = await ui.showConfirm(
-        '删除后视频会移入回收站，收藏/历史/专辑记录会一并移除。',
-        '确定删除此视频？',
+        t('batch.deleteConfirm'),
+        t('menu.deleteConfirmVideo'),
       )
       if (!ok) return
       const wasPlaying = player.playingId === id
@@ -165,7 +166,7 @@ export function setupVideoContextActions() {
         }
       }
       await gallery.loadVideos()
-      ui.showToast('已删除')
+      ui.showToast(t('batch.deleted'))
     }
   }
 

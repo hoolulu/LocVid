@@ -109,6 +109,27 @@ def _legacy_temp_path(source: Path, video_id: str) -> Path:
     return source.parent / f".locgallery-remux-{video_id[:8]}.tmp.mp4"
 
 
+def _precheck_disk_space(backup: Path, source: Path) -> None:
+    """重封装前预检磁盘空间：修复期间 .bak（原文件）与新文件需同时存在，约需 2 倍大小。
+
+    空间不足直接抛错 → 上层按失败回滚（.bak 恢复为原文件），不损坏数据。
+    """
+    try:
+        import shutil
+
+        usage = shutil.disk_usage(str(source.parent))
+        need = backup.stat().st_size * 2.0 + 64 * 1024 * 1024  # 原文件 + 新文件 + 余量
+        if usage.free < need:
+            gb = 2**30
+            raise RuntimeError(
+                f"磁盘空间不足：修复需要约 {need / gb:.1f} GB，"
+                f"当前可用 {usage.free / gb:.1f} GB（{source.parent}）"
+            )
+    except OSError:
+        # 无法读取磁盘信息时放行（由 ffmpeg 失败路径兜底回滚）
+        pass
+
+
 def _rollback_from_backup(backup: Path, source: Path) -> None:
     if source.is_file():
         source.unlink()
@@ -145,12 +166,39 @@ def _notify_library_sse(library_id: str) -> None:
         pass
 
 
+# 修复成功后删除 .bak 失败时进入待重试队列（如文件被占用/权限问题），由后续轮询重试
+_pending_backups: list[tuple[str, Path]] = []
+
+
 def _delete_backup_async(library_id: str, backup: Path) -> None:
     set_thread_library(library_id)
     try:
         delete_backup_file(library_id, backup, recycle=False)
     except OSError:
-        pass
+        # 立即删除失败：入队待重试，避免 .bak 永久残留
+        with _lock:
+            if (library_id, backup) not in _pending_backups:
+                _pending_backups.append((library_id, backup))
+
+
+def retry_pending_backups() -> int:
+    """重试清理之前删除失败的 .bak；返回本次成功清理的数量。"""
+    if not _pending_backups:
+        return 0
+    removed = 0
+    with _lock:
+        queue = list(_pending_backups)
+        _pending_backups.clear()
+    for library_id, backup in queue:
+        set_thread_library(library_id)
+        try:
+            delete_backup_file(library_id, backup, recycle=False)
+            removed += 1
+        except OSError:
+            with _lock:
+                if (library_id, backup) not in _pending_backups:
+                    _pending_backups.append((library_id, backup))
+    return removed
 
 
 def _finish_remuxed_file(
@@ -232,6 +280,7 @@ def _worker(job: RemuxJob) -> None:
             raise FileNotFoundError(f"源文件不存在: {source}")
 
         assert timestamps is not None
+        _precheck_disk_space(backup, source)
         _remux_and_finalize(job, backup, source, timestamps)
     except Exception as exc:
         try:
@@ -315,6 +364,9 @@ _auto_remux_stop = threading.Event()
 _AUTO_REMUX_INTERVAL_SEC = 60  # 轮询间隔
 _AUTO_REMUX_PAUSE_SEC = 5  # 每个文件修复完成后稍候再取下一个
 
+# 修复失败黑名单：(library_id, video_id, mtime, size) —— 同一文件（未变化）不再反复重试
+_remux_failed_keys: set[tuple[str, str, float, int]] = set()
+
 
 def start_auto_remux_worker() -> None:
     """启动后台批量预修复线程（幂等）。"""
@@ -346,6 +398,11 @@ def _auto_remux_loop() -> None:
         _auto_remux_stop.wait(_AUTO_REMUX_INTERVAL_SEC)
         if _auto_remux_stop.is_set():
             break
+        # 重试此前删除失败的 .bak（文件被占用/权限恢复后清除）
+        try:
+            retry_pending_backups()
+        except Exception:
+            pass
         if not bool(get_setting("html5_auto_remux")):
             continue
         try:
@@ -379,6 +436,13 @@ def _scan_library_for_remux(library_id: str, get_all, set_thread_library) -> Non
         path = Path(item.path).resolve()
         if not path.is_file() or not is_ready_for_processing(path):
             continue
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        key = (library_id, item.id, st.st_mtime, st.st_size)
+        if key in _remux_failed_keys:
+            continue
         plan = get_playback_plan(path)
         ok, _reason = can_remux_from_plan(plan)
         if not ok:
@@ -389,6 +453,9 @@ def _scan_library_for_remux(library_id: str, get_all, set_thread_library) -> Non
                 # 已启动一个修复任务；等待其完成后再取下一个（避免排队风暴）
                 _auto_remux_stop.wait(_AUTO_REMUX_PAUSE_SEC)
                 return
+            if result.get("error"):
+                # 修复失败（含 can_remux 校验失败）：记录黑名单，文件未变化前不再重试
+                _remux_failed_keys.add(key)
         except Exception:
             import traceback
 

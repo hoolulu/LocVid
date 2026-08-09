@@ -84,7 +84,7 @@ def ensure_deps(*, need_node: bool, auto_install: bool = True) -> bool:
 
 
 def main() -> None:
-    print("=== Loc Gallery · 环境初始化 ===\n")
+    print("=== LocVid · 环境初始化 ===\n")
     ok = ensure_deps(need_node=True, auto_install=True)
     if ok:
         print("\n依赖已就绪。运行 python restart.py 启动服务。")

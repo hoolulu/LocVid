@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
-"""Loc Gallery — 本地视频画廊 Web 服务。"""
+"""LocVid — 本地视频画廊 Web 服务。"""
 
-__version__ = "13.0.0"
+__version__ = "14.0.0"

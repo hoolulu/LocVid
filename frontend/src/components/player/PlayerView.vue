@@ -10,7 +10,8 @@ import { useUiStore } from '@/stores/ui'
 import { formatDuration } from '@/utils/format'
 import { thumbUrl } from '@/api/client'
 import { toggleFavorite } from '@/api'
-import { PLAYLIST_SORT_OPTIONS } from '@/constants/sort'
+import { getPlaylistSortOptions } from '@/constants/sort'
+import { t } from '@/i18n'
 import type { SortMode } from '@/types'
 
 const player = usePlayerStore()
@@ -28,7 +29,7 @@ const playlistItemRefs = ref<Record<string, HTMLElement>>({})
 let observer: IntersectionObserver | null = null
 
 const current = computed(() => player.playingItem)
-const playlistSortOptions = PLAYLIST_SORT_OPTIONS
+const playlistSortOptions = computed(() => getPlaylistSortOptions())
 
 // 宿主 div 就绪后告诉 store，供 startMovi 命令式创建 <movi-player>
 watch(moviHost, (el) => {
@@ -47,14 +48,16 @@ const canGoNext = computed(
 
 const albumCount = computed(() => current.value?.albumIds?.length || 0)
 const albumTitle = computed(() =>
-  albumCount.value > 0 ? `已在 ${albumCount.value} 个专辑，点击管理` : '加入专辑',
+  albumCount.value > 0 ? t('album.inNManage', { n: albumCount.value }) : t('album.add'),
 )
 const albumLabel = computed(() =>
-  albumCount.value > 0 ? `${albumCount.value} 个专辑` : '加入专辑',
+  albumCount.value > 0 ? t('album.nAlbums', { n: albumCount.value }) : t('album.add'),
 )
-const playlistToggleLabel = computed(() => (playlistOpen.value ? '收起侧栏' : '播放列表'))
+const playlistToggleLabel = computed(() =>
+  playlistOpen.value ? t('player.hidePlaylist') : t('player.playlist'),
+)
 const playlistToggleTitle = computed(() =>
-  playlistOpen.value ? '隐藏右侧播放列表' : '显示右侧播放列表',
+  playlistOpen.value ? t('player.hidePlaylistTitle') : t('player.showPlaylist'),
 )
 
 watch([() => player.open, sentinelRef], () => {
@@ -235,9 +238,12 @@ function applyRate(
 
 // 快进/快退提示：左下角 statusText 显示 1.2 秒后消失（倍速提示由 movi 自带 OSD 负责）
 function showSeekTip(delta: number) {
-  player.statusText = `${delta > 0 ? '快进' : '快退'} ${Math.abs(delta)} 秒`
+  const label = t(delta > 0 ? 'player.seekFwd' : 'player.seekBack')
+  const unit = t('settings.sec')
+  player.statusText = `${label} ${Math.abs(delta)} ${unit}`
+  // 闭包捕获设置时的本地化片段，避免切语言后比对失败
   setTimeout(() => {
-    if (player.statusText.includes('快进') || player.statusText.includes('快退')) player.statusText = ''
+    if (player.statusText.includes(label)) player.statusText = ''
   }, 1200)
 }
 
@@ -321,7 +327,7 @@ async function onPlaylistSortChange(e: Event) {
               :class="{ 'player-toolbar-btn--on': current?.favorited }"
               @click="onToggleFavorite"
             >
-              {{ current?.favorited ? '♥ 已收藏' : '♡ 收藏' }}
+              {{ current?.favorited ? t('player.favoritedLabel') : t('player.favoriteLabel') }}
             </button>
             <button
               type="button"
@@ -346,28 +352,28 @@ async function onPlaylistSortChange(e: Event) {
             <button
               type="button"
               class="player-back-btn"
-              title="关闭播放器，返回浏览页 (Esc)"
+              :title="t('player.backTitle')"
               @click="cancelPlayback()"
             >
-              返回浏览
+              {{ t('player.backToBrowse') }}
             </button>
             <button
               type="button"
               class="player-nav-btn"
               :disabled="!canGoPrev"
-              title="上一个"
+              :title="t('player.prev')"
               @click="playAdjacent(-1)"
             >
-              上一个
+              {{ t('player.prev') }}
             </button>
             <button
               type="button"
               class="player-nav-btn"
               :disabled="!canGoNext"
-              title="下一个"
+              :title="t('player.next')"
               @click="playAdjacent(1)"
             >
-              下一个
+              {{ t('player.next') }}
             </button>
           </div>
         </header>
@@ -378,7 +384,7 @@ async function onPlaylistSortChange(e: Event) {
         class="flex w-80 shrink-0 flex-col border-l border-[var(--lg-border)] bg-[var(--lg-bg-secondary)]"
       >
         <div class="flex items-center justify-between border-b border-[var(--lg-border)] px-3 py-2">
-          <span class="text-sm font-medium">播放列表 ({{ player.playlist.length }})</span>
+          <span class="text-sm font-medium">{{ t('player.playlistCount', { n: player.playlist.length }) }}</span>
           <select
             class="rounded border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-1 py-0.5 text-xs"
             :value="player.playlistSort"
@@ -410,7 +416,7 @@ async function onPlaylistSortChange(e: Event) {
                 alt=""
                 draggable="false"
               />
-              <div v-else class="player-pl-thumb-placeholder">暂无缩略图</div>
+              <div v-else class="player-pl-thumb-placeholder">{{ t('thumb.emptyHint') }}</div>
             </div>
             <div class="player-pl-meta">
               <div class="player-pl-title">{{ v.title }}</div>
@@ -418,9 +424,9 @@ async function onPlaylistSortChange(e: Event) {
             </div>
           </button>
           <div ref="sentinelRef" class="py-2 text-center text-xs text-[var(--lg-text-muted)]">
-            <span v-if="player.playlistLoading">加载中…</span>
-            <span v-else-if="player.playlistCanLoadMore">向下滚动加载更多</span>
-            <span v-else-if="player.playlist.length">已加载全部</span>
+            <span v-if="player.playlistLoading">{{ t('common.loading') }}</span>
+            <span v-else-if="player.playlistCanLoadMore">{{ t('player.loadMore') }}</span>
+            <span v-else-if="player.playlist.length">{{ t('player.loadedAll') }}</span>
           </div>
         </div>
       </aside>

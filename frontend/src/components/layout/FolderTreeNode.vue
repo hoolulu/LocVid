@@ -73,12 +73,13 @@ const showChildren = computed(() => {
       <span class="min-w-0 flex-1 truncate">{{ node.name }}</span>
       <span class="text-[var(--lg-text-muted)]">{{ node.total }}</span>
     </button>
+    <!-- @vue-ignore -->
     <VueDraggable
       v-if="showChildren"
       :list="node.children"
       :handle="'.folder-drag-handle'"
       :disabled="filterActive"
-      animation="150"
+      :animation="150"
       ghost-class="folder-drag-ghost"
       @end="onDragEnd"
     >

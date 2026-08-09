@@ -6,6 +6,7 @@ import { useHoverPreview } from '@/composables/useHoverPreview'
 import { useGalleryStore } from '@/stores/gallery'
 import { useSettingsStore } from '@/stores/settings'
 import { useUiStore } from '@/stores/ui'
+import { t } from '@/i18n'
 import type { Video } from '@/types'
 import { formatBadgeLabel } from '@/utils/format'
 
@@ -31,7 +32,7 @@ const { startPreview, stopPreview, stopPreviewNow } = useHoverPreview()
 const isSelected = computed(() => ui.selectedIds.has(props.video.id))
 const albumCount = computed(() => props.video.albumIds?.length || 0)
 const albumTitle = computed(() =>
-  albumCount.value > 0 ? `已在 ${albumCount.value} 个专辑` : '加入专辑',
+  albumCount.value > 0 ? t('album.inN', { n: albumCount.value }) : t('album.add'),
 )
 
 /** 搜索关键词高亮：仅当全局搜索词命中标题时渲染 <mark>（HTML 已转义，防注入） */
@@ -65,9 +66,9 @@ function formatDuration(sec?: number) {
 }
 
 function thumbPlaceholder() {
-  if (props.video.thumbStatus === 'generating') return '生成中…'
-  if (props.video.thumbStatus === 'failed') return '生成失败'
-  return '无缩略图'
+  if (props.video.thumbStatus === 'generating') return t('thumb.generating')
+  if (props.video.thumbStatus === 'failed') return t('thumb.failed')
+  return t('thumb.none')
 }
 
 function onCardClick() {
@@ -162,8 +163,8 @@ function onCheckChange(e: Event) {
         type="button"
         class="card-fav"
         :class="{ on: video.favorited }"
-        :title="video.favorited ? '取消收藏' : '收藏'"
-        :aria-label="video.favorited ? '取消收藏' : '收藏'"
+      :title="video.favorited ? t('fav.remove') : t('fav.add')"
+      :aria-label="video.favorited ? t('fav.remove') : t('fav.add')"
         @click.stop="emit('toggleFavorite', video.id)"
       >
         ♥
@@ -174,10 +175,9 @@ function onCheckChange(e: Event) {
       type="checkbox"
       class="card-check"
       :checked="isSelected"
-      aria-label="选择"
+      :aria-label="t('batch.selectItem')"
       @click.stop
-      @change="onCheckChange"
-    />
+      @change="onCheckChange"    />
 
     <div class="card-title-wrap px-2 pb-2 pt-1.5">
       <h3 class="card-title line-clamp-2 text-sm leading-snug">

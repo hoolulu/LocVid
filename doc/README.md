@@ -1,4 +1,4 @@
-# Loc Gallery 文档
+# LocVid 文档
 
 本目录包含产品需求文档与 README 配图。
 

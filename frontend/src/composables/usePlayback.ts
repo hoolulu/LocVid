@@ -6,6 +6,8 @@ import { useSettingsStore } from '@/stores/settings'
 
 import { useUiStore } from '@/stores/ui'
 
+import { t } from '@/i18n'
+
 import { streamUrl } from '@/api/client'
 
 import {
@@ -114,15 +116,15 @@ export function usePlayback() {
 
     while (Date.now() - start < 600000) {
 
-      if (player.isStale(session)) throw new Error('已切换视频')
+      if (player.isStale(session)) throw new Error(t('player.switched'))
 
       const st = await getRemuxStatus(id)
 
       if (st.state === 'done') return
 
-      if (st.state === 'error') throw new Error(st.error || '修复失败')
+      if (st.state === 'error') throw new Error(st.error || t('player.remuxFailed'))
 
-      player.showOverlay('正在修复', st.message || '流复制重封装中…', {
+      player.showOverlay(t('player.repairing'), st.message || t('player.repairMsg'), {
 
         indeterminate: st.progress_pct == null,
 
@@ -134,7 +136,7 @@ export function usePlayback() {
 
     }
 
-    throw new Error('修复超时')
+    throw new Error(t('player.repairTimeout'))
 
   }
 
@@ -144,7 +146,7 @@ export function usePlayback() {
 
     await stopSlice()
 
-    player.showOverlay('正在修复', '启动重封装…', { indeterminate: true })
+    player.showOverlay(t('player.repairing'), t('player.repairStarting'), { indeterminate: true })
 
     await startRemux(id)
 
@@ -170,7 +172,7 @@ export function usePlayback() {
     const url = streamUrl(id, library.activeLibraryId)
     let readyFired = false
     let watchdog: ReturnType<typeof setTimeout> | null = null
-    player.showOverlay('加载视频', '正在分析…', { indeterminate: true })
+    player.showOverlay(t('player.loadingVideo'), t('player.analyzing'), { indeterminate: true })
 
     const resume = settings.settings?.html5_resume_playback !== false
     const resumeAt = getSavedPosition(item.playPosition, item.playDuration, resume) || 0
@@ -203,10 +205,11 @@ export function usePlayback() {
           // 当前为 ready 但还没播放时显式播放；已 playing 则跳过（避免重复 play 报错）
           if (mp.getPaused()) void mp.play()
           if (resumeAt > 0) {
-            player.statusText = `从 ${formatDuration(resumeAt)} 继续播放`
-            // 续播提示 3 秒后自动消失
+            const prefix = t('player.resumePrefix')
+            player.statusText = t('player.resumeFrom', { pos: formatDuration(resumeAt) })
+            // 闭包捕获设置时的前缀，避免切语言后比对失败
             setTimeout(() => {
-              if (player.statusText.startsWith('从 ')) player.statusText = ''
+              if (player.statusText.startsWith(prefix)) player.statusText = ''
             }, 3000)
           }
           void recordPlay(id)
@@ -236,11 +239,12 @@ export function usePlayback() {
         },
         onError: (err: unknown) => {
           const msg =
-            err instanceof Error ? err.message : typeof err === 'string' ? err : '未知播放错误'
+            err instanceof Error ? err.message : typeof err === 'string' ? err : t('player.unknownError')
+          const prefix = t('player.playErrorPrefix')
           player.hideOverlay()
-          player.statusText = `播放失败：${msg}`
+          player.statusText = t('player.playError', { msg })
           setTimeout(() => {
-            if (player.statusText.startsWith('播放失败')) player.statusText = ''
+            if (player.statusText.startsWith(prefix)) player.statusText = ''
           }, 15000)
         },
       },
@@ -266,8 +270,8 @@ export function usePlayback() {
           return
         }
         player.showOverlay(
-          '播放器无响应',
-          '12 秒内未进入就绪状态。请按 F12 打开控制台，查看是否有 [LocGallery] 或 movi-player 的红色报错（常见于 .wasm 解码器 / 视频流加载失败），截图发我即可定位。',
+          t('player.noResponse'),
+          t('player.noResponseDetail'),
           { indeterminate: false },
         )
       }, 12000)
@@ -328,7 +332,7 @@ export function usePlayback() {
 
     const choice = await ui.showNonStandardDialog({
 
-      reason: info.reason || '该视频需要修复或外部播放。',
+      reason: info.reason || t('player.repairReason'),
 
       remuxable: !!info.remuxable,
 
@@ -371,7 +375,7 @@ export function usePlayback() {
 
     try {
 
-      player.showOverlay('检测兼容性', '分析视频格式…', { indeterminate: true })
+      player.showOverlay(t('player.checkCompat'), t('player.analyzingFormat'), { indeterminate: true })
 
       const info = await getPlayInfo(item.id)
 
@@ -445,7 +449,7 @@ export function usePlayback() {
 
       const choice = await ui.showNonStandardDialog({
 
-        reason: `播放失败: ${msg}`,
+        reason: t('player.playFailedReason', { msg }),
 
         remuxable: false,
 

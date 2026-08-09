@@ -1,6 +1,7 @@
 import { toggleFavorite } from '@/api'
 import { usePlayback } from '@/composables/usePlayback'
 import { usePlaylistLoader } from '@/composables/usePlaylistLoader'
+import { t } from '@/i18n'
 import { useGalleryStore } from '@/stores/gallery'
 import { usePlayerStore } from '@/stores/player'
 import { useUiStore } from '@/stores/ui'
@@ -15,7 +16,7 @@ export function useGalleryPlay() {
 
   async function onPlay(id: string, list?: Video[]) {
     if (player.open) {
-      ui.showToast('请先关闭播放器')
+      ui.showToast(t('other.closePlayerFirst'))
       return
     }
     const source = list ?? gallery.videos
@@ -34,7 +35,7 @@ export function useGalleryPlay() {
 
   async function onRandomPlay() {
     if (player.open) {
-      ui.showToast('请先关闭播放器')
+      ui.showToast(t('other.closePlayerFirst'))
       return
     }
     const seed = Date.now()
@@ -43,12 +44,12 @@ export function useGalleryPlay() {
     try {
       const item = await bindRandomPlaylist(seed)
       if (!item) {
-        ui.showToast('没有可播放的视频')
+        ui.showToast(t('page.noVideos'))
         return
       }
       await playVideo(item, player.playlist)
     } catch (err) {
-      ui.showToast(`随机播放失败: ${err instanceof Error ? err.message : String(err)}`)
+      ui.showToast(t('page.randomFailed', { msg: err instanceof Error ? err.message : String(err) }))
     }
   }
 

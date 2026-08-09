@@ -6,6 +6,8 @@ import { generateThumbCandidates, pickThumbCandidate } from '@/api/thumbs'
 
 import type { ThumbCandidate } from '@/api/thumbs'
 
+import { t } from '@/i18n'
+
 import { useGalleryStore } from '@/stores/gallery'
 
 import { useUiStore } from '@/stores/ui'
@@ -34,7 +36,7 @@ async function selectCandidate(c: ThumbCandidate) {
 
     await pickThumbCandidate(ui.thumbPickerVideoId, c.index)
 
-    ui.showToast(`已选择 ${Math.round(c.pos * 100)}% 位置`)
+    ui.showToast(t('thumb.selectedPos', { pos: Math.round(c.pos * 100) }))
 
     ui.closeThumbPicker(true)
 
@@ -42,7 +44,7 @@ async function selectCandidate(c: ThumbCandidate) {
 
   } catch {
 
-    ui.showToast('应用缩略图失败')
+    ui.showToast(t('thumb.applyFailed'))
 
   } finally {
 
@@ -108,7 +110,7 @@ function close() {
 
           <div class="min-w-0">
 
-            <h2 class="text-lg font-medium">选择缩略图</h2>
+            <h2 class="text-lg font-medium">{{ t('thumbpick.title') }}</h2>
 
             <p v-if="ui.thumbPickerSubtitle" class="truncate text-xs text-[var(--lg-text-muted)]">
 
@@ -124,7 +126,7 @@ function close() {
 
 
 
-        <p class="px-4 py-2 text-sm text-[var(--lg-text-muted)]">点击选择一张作为缩略图</p>
+        <p class="px-4 py-2 text-sm text-[var(--lg-text-muted)]">{{ t('thumbpick.hint') }}</p>
 
 
 
@@ -178,7 +180,7 @@ function close() {
 
           >
 
-            {{ loading ? '生成中…' : '换一批' }}
+            {{ loading ? t('common.loading') : t('thumbpick.reroll') }}
 
           </button>
 
@@ -192,7 +194,7 @@ function close() {
 
           >
 
-            取消
+            {{ t('common.cancel') }}
 
           </button>
 

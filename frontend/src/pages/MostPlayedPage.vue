@@ -4,6 +4,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import CategorySidebar from '@/components/layout/CategorySidebar.vue'
 import VideoCard from '@/components/gallery/VideoCard.vue'
 import BrowsePagination from '@/components/gallery/BrowsePagination.vue'
+import { t } from '@/i18n'
 import { useGalleryPlay } from '@/composables/useGalleryPlay'
 import { showVideoContextMenu } from '@/composables/useVideoContextActions'
 import { useGalleryStore } from '@/stores/gallery'
@@ -63,15 +64,16 @@ function onVideoContext(e: MouseEvent, videoId: string) {
       <CategorySidebar v-if="settings.preset === 'youtube'" />
       <main class="flex flex-1 flex-col overflow-hidden p-4">
       <div class="mb-4 flex shrink-0 items-center gap-3">
-        <h2 class="text-lg font-medium">最多播放</h2>
-        <span class="text-sm text-[var(--lg-text-muted)]">共 {{ gallery.total }} 个</span>
+        <h2 class="text-lg font-medium">{{ t('most.title') }}</h2>
+        <span class="text-sm text-[var(--lg-text-muted)]">{{ t('page.count', { n: gallery.total }) }}</span>
       </div>
       <div
         v-if="!gallery.loading && !gallery.videos.length"
         class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm text-[var(--lg-text-muted)]"
       >
         <span class="text-3xl opacity-60">▶</span>
-        <span>视频库为空</span>
+        <span>{{ t('most.empty') }}</span>
+        <span>{{ t('most.emptyHint') }}</span>
       </div>
       <div
         v-else

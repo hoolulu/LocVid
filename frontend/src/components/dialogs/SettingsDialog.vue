@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useUiStore } from '@/stores/ui'
 import { useGalleryStore } from '@/stores/gallery'
@@ -15,7 +15,8 @@ import {
 } from '@/api/files'
 import { exportData, importData } from '@/api'
 import { cleanupOrphans, getThumbStats, regenerateFailed } from '@/api/thumbs'
-import { GALLERY_SORT_OPTIONS } from '@/constants/sort'
+import { getGallerySortOptions } from '@/constants/sort'
+import { t, useI18n, type Locale } from '@/i18n'
 import type { Settings } from '@/types'
 
 const ui = useUiStore()
@@ -23,6 +24,12 @@ const settings = useSettingsStore()
 const library = useLibraryStore()
 const gallery = useGalleryStore()
 const album = useAlbumStore()
+const { locale } = useI18n()
+
+function onLocaleChange(e: Event) {
+  const { setLocale } = useI18n()
+  setLocale((e.target as HTMLSelectElement).value as Locale)
+}
 
 type SettingsTab = 'library' | 'playback' | 'thumbnail' | 'other'
 const TAB_KEY = 'loc-gallery-settings-tab'
@@ -58,31 +65,31 @@ function formatThumbBytes(bytes: number): string {
 }
 
 async function onCleanupThumbs() {
-  const ok = await ui.showConfirm('将删除不再存在于视频库中的缩略图缓存（孤儿文件）。', '清理孤立缩略图')
+  const ok = await ui.showConfirm(t('settings.cleanupThumbsMsg'), t('settings.cleanupBtn'))
   if (!ok) return
   const res = await cleanupOrphans()
-  ui.showToast(`已清理 ${res.removed} 个孤儿缩略图`)
+  ui.showToast(t('thumb.cleaned', { n: res.removed }))
   await loadThumbStats()
 }
 
 async function onRegenerateFailed() {
-  const ok = await ui.showConfirm('将为生成失败的视频重新排队缩略图（会消耗一些时间）。', '重新生成失败缩略图')
+  const ok = await ui.showConfirm(t('settings.regenFailedMsg'), t('thumb.regenFailed'))
   if (!ok) return
   const res = (await regenerateFailed()) as { regenerated?: number }
-  ui.showToast(`已重新生成 ${res.regenerated ?? 0} 张`)
+  ui.showToast(t('settings.regenDone', { n: res.regenerated ?? 0 }))
 }
 
-const presets = [
-  { value: 'netflix', label: '影院（白底全宽）' },
-  { value: 'youtube', label: '经典（侧栏网格）' },
-]
+const presets = computed(() => [
+  { value: 'netflix', label: t('settings.preset.cinema') },
+  { value: 'youtube', label: t('settings.preset.classic') },
+])
 
-const tabs: { id: SettingsTab; label: string }[] = [
-  { id: 'library', label: '视频库' },
-  { id: 'playback', label: '播放' },
-  { id: 'thumbnail', label: '缩略图' },
-  { id: 'other', label: '其他' },
-]
+const tabs = computed<{ id: SettingsTab; label: string }[]>(() => [
+  { id: 'library', label: t('settings.tab.library') },
+  { id: 'playback', label: t('settings.tab.playback') },
+  { id: 'thumbnail', label: t('settings.tab.thumbnail') },
+  { id: 'other', label: t('settings.tab.other') },
+])
 
 watch(tab, (v) => localStorage.setItem(TAB_KEY, v))
 
@@ -126,7 +133,7 @@ function applyPageSizeToForm() {
 async function save() {
   applyPageSizeToForm()
   await settings.updateSettings({ ...form }, settingsScope.value)
-  ui.showToast('设置已保存')
+  ui.showToast(t('settings.saved'))
   close()
 }
 
@@ -145,11 +152,11 @@ async function addLibrary() {
 
 async function saveLibraryRow(lib: { id: string; alias: string; path: string }) {
   await updateLibrary(lib.id, { alias: lib.alias, path: lib.path })
-  ui.showToast('已保存')
+  ui.showToast(t('settings.saved'))
 }
 
 async function onRemoveLibrary(id: string, alias: string) {
-  const ok = await ui.showConfirm(`确定删除视频库「${alias}」？视频文件不会被删除。`, '删除视频库')
+  const ok = await ui.showConfirm(t('settings.library.deleteConfirm', { alias }), t('settings.deleteLibrary'))
   if (!ok) return
   await deleteLibrary(id)
   await library.loadLibraries()
@@ -160,35 +167,35 @@ async function onRemoveLibrary(id: string, alias: string) {
   await gallery.loadCategories()
   await gallery.loadVideos()
   await album.loadAlbums()
-  ui.showToast('已删除视频库')
+  ui.showToast(t('settings.library.deleted'))
 }
 
 async function onRestart() {
-  const ok = await ui.showConfirm('确定重启服务？')
+  const ok = await ui.showConfirm(t('settings.restartConfirm'))
   if (!ok) return
   const before = await fetch('/api/health').then((r) => r.json()).catch(() => null)
   await restartService()
-  ui.showToast('服务重启中…')
+  ui.showToast(t('settings.restarting'))
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 500))
     try {
       const after = await fetch('/api/health').then((r) => r.json())
       if (after?.ok && after.boot_id !== before?.boot_id) {
-        ui.showToast('服务已重启')
+        ui.showToast(t('settings.restarted'))
         return
       }
     } catch {
       /* wait */
     }
   }
-  ui.showToast('重启已排队，请稍后刷新')
+  ui.showToast(t('settings.restartQueued'))
 }
 
 async function onClearHistory() {
-  const ok = await ui.showConfirm('确定清空全部播放记录？')
+  const ok = await ui.showConfirm(t('settings.clearHistoryConfirm'))
   if (!ok) return
   await clearHistory()
-  ui.showToast('已清空')
+  ui.showToast(t('history.cleared'))
 }
 
 // ── 数据备份（导出/导入）──
@@ -208,9 +215,9 @@ async function onExportData() {
     a.download = `loc-gallery-backup-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    ui.showToast('已导出备份文件')
+    ui.showToast(t('settings.exported'))
   } catch {
-    ui.showToast('导出失败')
+    ui.showToast(t('settings.exportFailed'))
   }
 }
 
@@ -222,13 +229,10 @@ async function onImportFilePick(e: Event) {
   try {
     const data = JSON.parse(await file.text())
     if (typeof data !== 'object' || data === null) throw new Error('bad payload')
-    const ok = await ui.showConfirm(
-      '导入将覆盖当前库的收藏/播放记录/专辑/分类顺序，并合并全局设置。建议先导出备份再导入。',
-      '确认导入数据？',
-    )
+    const ok = await ui.showConfirm(t('settings.importMsg'), t('settings.importTitle'))
     if (!ok) return
     const res = await importData(data as Record<string, unknown>)
-    ui.showToast(`导入完成：${res.imported.join('、')}`)
+    ui.showToast(t('settings.importDone', { names: res.imported.join('、') }))
     // 刷新受影响的本地状态
     await Promise.all([
       library.loadLibraries(),
@@ -238,7 +242,7 @@ async function onImportFilePick(e: Event) {
       album.loadAlbums(),
     ])
   } catch {
-    ui.showToast('导入失败：文件不是有效的备份 JSON')
+    ui.showToast(t('settings.importInvalid'))
   }
 }
 
@@ -273,14 +277,14 @@ watch(tab, (t) => {
     <div v-if="ui.settingsOpen" class="lg-modal-overlay" @click.self="close">
       <div class="settings-dialog" role="dialog" aria-modal="true" @click.stop>
         <header class="settings-topbar">
-          <h2>设置</h2>
+          <h2>{{ t('settings.title') }}</h2>
           <span class="settings-topbar-hint">
-            {{ settingsScope === 'global' ? '全局设置' : '当前库设置' }}
+            {{ settingsScope === 'global' ? t('settings.scopeGlobal') : t('settings.scopeLibrary') }}
           </span>
         </header>
 
         <div class="settings-shell">
-          <nav class="settings-sidebar" aria-label="设置分类">
+          <nav class="settings-sidebar" :aria-label="t('settings.navAria')">
             <button
               v-for="t in tabs"
               :key="t.id"
@@ -297,13 +301,13 @@ watch(tab, (t) => {
             <!-- 视频库 -->
             <template v-if="tab === 'library'">
               <section class="settings-block">
-                <h3 class="settings-block-title">视频库管理</h3>
-                <p class="settings-subtitle">现有视频库</p>
+                <h3 class="settings-block-title">{{ t('settings.libraryManage') }}</h3>
+                <p class="settings-subtitle">{{ t('settings.existingLibraries') }}</p>
                 <div v-if="library.libraries.length" class="lib-table">
                   <div class="lib-table-head">
-                    <span>别名</span>
-                    <span>文件夹路径</span>
-                    <span class="lib-col-actions">操作</span>
+                    <span>{{ t('settings.library.alias') }}</span>
+                    <span>{{ t('settings.library.path') }}</span>
+                    <span class="lib-col-actions">{{ t('settings.actions') }}</span>
                   </div>
                   <div class="lib-table-body">
                     <div v-for="lib in library.libraries" :key="lib.id" class="lib-table-row">
@@ -312,57 +316,57 @@ watch(tab, (t) => {
                         <input v-model="lib.path" class="settings-input settings-input--compact" />
                       </div>
                       <div class="lib-col-actions">
-                        <button type="button" class="settings-btn" @click="saveLibraryRow(lib)">保存</button>
+                        <button type="button" class="settings-btn" @click="saveLibraryRow(lib)">{{ t('common.save') }}</button>
                         <button
                           type="button"
                           class="settings-btn settings-btn--danger"
                           @click="onRemoveLibrary(lib.id, lib.alias)"
                         >
-                          删除
+                          {{ t('common.delete') }}
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div v-else class="lib-empty">暂无视频库，请在下方添加</div>
+                <div v-else class="lib-empty">{{ t('settings.emptyLibraries') }}</div>
 
-                <p class="settings-subtitle" style="margin-top: 1rem">新增视频库</p>
+                <p class="settings-subtitle" style="margin-top: 1rem">{{ t('settings.addLibraryTitle') }}</p>
                 <div class="lib-table-row lib-add-row">
                   <input
                     v-model="newLib.alias"
-                    placeholder="别名"
+                    :placeholder="t('settings.library.alias')"
                     class="settings-input settings-input--compact"
                     autocomplete="off"
                   />
                   <div class="lib-path-cell">
                     <input
                       v-model="newLib.path"
-                      placeholder="文件夹路径"
+                      :placeholder="t('settings.library.path')"
                       class="settings-input settings-input--compact"
                       autocomplete="off"
                     />
-                    <button type="button" class="settings-btn" @click="pickPath">浏览</button>
+                    <button type="button" class="settings-btn" @click="pickPath">{{ t('settings.library.browse') }}</button>
                   </div>
                   <div class="lib-col-actions">
                     <button type="button" class="settings-btn settings-btn--primary" @click="addLibrary">
-                      添加
+                      {{ t('settings.library.add') }}
                     </button>
                   </div>
                 </div>
               </section>
 
               <section class="settings-block">
-                <h3 class="settings-block-title">外观</h3>
+                <h3 class="settings-block-title">{{ t('settings.appearance') }}</h3>
                 <div class="settings-grid settings-grid--2">
                   <label class="settings-field">
-                    <span class="settings-field-label">界面主题</span>
+                    <span class="settings-field-label">{{ t('settings.theme') }}</span>
                     <select v-model="form.ui_theme" class="settings-input">
-                      <option value="dark">夜间</option>
-                      <option value="light">白天</option>
+                      <option value="dark">{{ t('settings.theme.dark') }}</option>
+                      <option value="light">{{ t('settings.theme.light') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">布局风格</span>
+                    <span class="settings-field-label">{{ t('settings.preset') }}</span>
                     <select v-model="form.ui_preset" class="settings-input">
                       <option v-for="p in presets" :key="p.value" :value="p.value">{{ p.label }}</option>
                     </select>
@@ -374,72 +378,72 @@ watch(tab, (t) => {
             <!-- 播放 -->
             <template v-else-if="tab === 'playback'">
               <section class="settings-block">
-                <h3 class="settings-block-title">播放</h3>
+                <h3 class="settings-block-title">{{ t('settings.tab.playback') }}</h3>
                 <div class="settings-grid">
                   <label class="settings-field">
-                    <span class="settings-field-label">续播</span>
+                    <span class="settings-field-label">{{ t('settings.resume') }}</span>
                     <select v-model="form.html5_resume_playback" class="settings-input">
-                      <option :value="true">开</option>
-                      <option :value="false">关</option>
+                      <option :value="true">{{ t('settings.on') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">连播</span>
+                    <span class="settings-field-label">{{ t('settings.autoplay') }}</span>
                     <select v-model="form.html5_playlist_autoplay" class="settings-input">
-                      <option :value="true">开</option>
-                      <option :value="false">关</option>
+                      <option :value="true">{{ t('settings.on') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">后台自动修复</span>
+                    <span class="settings-field-label">{{ t('settings.autoRemux') }}</span>
                     <select v-model="form.html5_auto_remux" class="settings-input">
-                      <option :value="true">开（空闲时自动重封装可修复文件）</option>
-                      <option :value="false">关</option>
+                      <option :value="true">{{ t('settings.autoRemuxOn') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">预览浮层消失方式</span>
+                    <span class="settings-field-label">{{ t('settings.pinMode') }}</span>
                     <select v-model="form.html5_hover_tip_pin" class="settings-input">
-                      <option :value="true">按关闭按钮才消失</option>
-                      <option :value="false">移开鼠标自动消失（默认）</option>
+                      <option :value="true">{{ t('settings.pinOn') }}</option>
+                      <option :value="false">{{ t('settings.pinOff') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">进度条悬停截图</span>
+                    <span class="settings-field-label">{{ t('settings.seekPreview') }}</span>
                     <select v-model="form.html5_seek_preview" class="settings-input">
-                      <option :value="true">开（悬停进度条显示时间点画面）</option>
-                      <option :value="false">关</option>
+                      <option :value="true">{{ t('settings.seekPreviewOn') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">外部播放器路径</span>
+                    <span class="settings-field-label">{{ t('settings.externalPlayerPath') }}</span>
                     <input
                       v-model="form.external_player_path"
                       class="settings-input"
-                      placeholder="自动检测 PotPlayer"
+                      :placeholder="t('settings.externalPlayerPlaceholder')"
                     />
                   </label>
                   <div class="settings-field settings-field--full">
                     <p class="settings-field-hint">
-                      浏览器无法硬解的视频（如 mpeg2/VC-1/WMV）会提示用外部播放器打开；可填 VLC、MPC-HC 等任意播放器 exe 路径。
+                      {{ t('settings.externalPlayerHint') }}
                     </p>
                   </div>
                 </div>
               </section>
 
               <section class="settings-block">
-                <h3 class="settings-block-title">快捷键与操作</h3>
+                <h3 class="settings-block-title">{{ t('settings.hotkeys') }}</h3>
                 <div class="settings-grid settings-grid--2">
                   <label class="settings-field">
-                    <span class="settings-field-label">上一集键</span>
+                    <span class="settings-field-label">{{ t('settings.prevKey') }}</span>
                     <input v-model="form.html5_player_prev_key" class="settings-input" maxlength="12" />
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">下一集键</span>
+                    <span class="settings-field-label">{{ t('settings.nextKey') }}</span>
                     <input v-model="form.html5_player_next_key" class="settings-input" maxlength="12" />
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">滚轮快进</span>
+                    <span class="settings-field-label">{{ t('settings.wheelSeek') }}</span>
                     <div class="settings-unit-row">
                       <input
                         v-model.number="form.html5_wheel_seek_sec"
@@ -448,18 +452,18 @@ watch(tab, (t) => {
                         max="120"
                         class="settings-input"
                       />
-                      <span class="settings-unit">秒</span>
+                      <span class="settings-unit">{{ t('settings.sec') }}</span>
                     </div>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">悬停预览</span>
+                    <span class="settings-field-label">{{ t('settings.hoverPreview') }}</span>
                     <select v-model="form.html5_hover_preview" class="settings-input">
-                      <option :value="true">开（多段视频预览）</option>
-                      <option :value="false">关（仅静态缩略图）</option>
+                      <option :value="true">{{ t('settings.hoverPreviewOn') }}</option>
+                      <option :value="false">{{ t('settings.hoverPreviewOff') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">预览段数</span>
+                    <span class="settings-field-label">{{ t('settings.segments') }}</span>
                     <div class="settings-unit-row">
                       <input
                         v-model.number="form.html5_hover_preview_segments"
@@ -468,11 +472,11 @@ watch(tab, (t) => {
                         max="10"
                         class="settings-input"
                       />
-                      <span class="settings-unit">段</span>
+                      <span class="settings-unit">{{ t('settings.unit') }}</span>
                     </div>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">每段时长</span>
+                    <span class="settings-field-label">{{ t('settings.segmentSec') }}</span>
                     <div class="settings-unit-row">
                       <input
                         v-model.number="form.html5_hover_preview_segment_sec"
@@ -481,7 +485,7 @@ watch(tab, (t) => {
                         max="15"
                         class="settings-input"
                       />
-                      <span class="settings-unit">秒</span>
+                      <span class="settings-unit">{{ t('settings.sec') }}</span>
                     </div>
                   </label>
                 </div>
@@ -491,10 +495,10 @@ watch(tab, (t) => {
             <!-- 缩略图 -->
             <template v-else-if="tab === 'thumbnail'">
               <section class="settings-block">
-                <h3 class="settings-block-title">缩略图生成</h3>
+                <h3 class="settings-block-title">{{ t('settings.thumbGen') }}</h3>
                 <div class="settings-grid">
                   <label class="settings-field">
-                    <span class="settings-field-label">截图位置</span>
+                    <span class="settings-field-label">{{ t('settings.thumbPos') }}</span>
                     <div class="settings-unit-row">
                       <input
                         v-model.number="form.thumb_position"
@@ -504,30 +508,30 @@ watch(tab, (t) => {
                         max="0.95"
                         class="settings-input"
                       />
-                      <span class="settings-unit">比例</span>
+                      <span class="settings-unit">{{ t('settings.ratio') }}</span>
                     </div>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">空闲扫描</span>
+                    <span class="settings-field-label">{{ t('settings.idleScan') }}</span>
                     <select v-model="form.thumb_idle_scan" class="settings-input">
-                      <option :value="true">开</option>
-                      <option :value="false">关</option>
+                      <option :value="true">{{ t('settings.on') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">进度条</span>
+                    <span class="settings-field-label">{{ t('settings.progressBar') }}</span>
                     <select v-model="form.thumb_progress_bar" class="settings-input">
-                      <option value="auto">活动时显示</option>
-                      <option value="always">始终显示</option>
-                      <option value="never">始终隐藏</option>
+                      <option value="auto">{{ t('settings.progressAuto') }}</option>
+                      <option value="always">{{ t('settings.progressAlways') }}</option>
+                      <option value="never">{{ t('settings.progressNever') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">并发数</span>
+                    <span class="settings-field-label">{{ t('settings.workers') }}</span>
                     <input v-model.number="form.thumb_workers" type="number" min="1" max="8" class="settings-input" />
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">候选图数量</span>
+                    <span class="settings-field-label">{{ t('settings.candidateCount') }}</span>
                     <input
                       v-model.number="form.thumb_candidate_count"
                       type="number"
@@ -537,42 +541,42 @@ watch(tab, (t) => {
                     />
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">单选自动最优</span>
+                    <span class="settings-field-label">{{ t('settings.autoBestSingle') }}</span>
                     <select v-model="form.thumb_auto_select_best" class="settings-input">
-                      <option :value="true">开</option>
-                      <option :value="false">关</option>
+                      <option :value="true">{{ t('settings.on') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">批量自动最优</span>
+                    <span class="settings-field-label">{{ t('settings.autoBestBatch') }}</span>
                     <select v-model="form.thumb_batch_auto_select" class="settings-input">
-                      <option :value="true">开</option>
-                      <option :value="false">关</option>
+                      <option :value="true">{{ t('settings.on') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">随机偏移 (±%)</span>
+                    <span class="settings-field-label">{{ t('settings.jitterPct') }}</span>
                     <input v-model.number="form.thumb_jitter_pct" type="number" min="5" max="15" class="settings-input" />
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">偏移下限 %</span>
+                    <span class="settings-field-label">{{ t('settings.jitterMin') }}</span>
                     <input v-model.number="form.thumb_jitter_min" type="number" min="3" max="12" class="settings-input" />
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">偏移上限 %</span>
+                    <span class="settings-field-label">{{ t('settings.jitterMax') }}</span>
                     <input v-model.number="form.thumb_jitter_max" type="number" min="88" max="97" class="settings-input" />
                   </label>
                 </div>
               </section>
 
               <section class="settings-block">
-                <h3 class="settings-block-title">维护</h3>
+                <h3 class="settings-block-title">{{ t('settings.maintenance') }}</h3>
                 <div class="flex flex-wrap items-center gap-3">
                   <span class="settings-field-hint">
-                    缓存占用：{{ thumbStats ? `${formatThumbBytes(thumbStats.bytes)}（${thumbStats.files} 个文件）` : '…' }}
+                    {{ t('settings.cacheUsage', { text: thumbStats ? `${formatThumbBytes(thumbStats.bytes)}（${thumbStats.files} ${t('thumb.files')}）` : '…' }) }}
                   </span>
-                  <button type="button" class="settings-btn" @click="onCleanupThumbs">清理孤立缩略图</button>
-                  <button type="button" class="settings-btn" @click="onRegenerateFailed">重新生成失败的</button>
+                  <button type="button" class="settings-btn" @click="onCleanupThumbs">{{ t('settings.cleanupBtn') }}</button>
+                  <button type="button" class="settings-btn" @click="onRegenerateFailed">{{ t('settings.regenFailedBtn') }}</button>
                 </div>
               </section>
             </template>
@@ -580,15 +584,22 @@ watch(tab, (t) => {
             <!-- 其他 -->
             <template v-else>
               <section class="settings-block">
-                <h3 class="settings-block-title">通用</h3>
+                <h3 class="settings-block-title">{{ t('settings.general') }}</h3>
                 <div class="settings-grid settings-grid--2">
                   <label class="settings-field">
-                    <span class="settings-field-label">默认每页</span>
+                    <span class="settings-field-label">{{ t('settings.lang') }}</span>
+                    <select :value="locale" class="settings-input" @change="onLocaleChange">
+                      <option value="zh">{{ t('settings.lang.zh') }}</option>
+                      <option value="en">{{ t('settings.lang.en') }}</option>
+                    </select>
+                  </label>
+                  <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.defaultPageSize') }}</span>
                     <div class="flex gap-2">
                       <select v-model="pageSizeMode" class="settings-input">
-                        <option value="40">40 张</option>
-                        <option value="80">80 张</option>
-                        <option value="custom">自定义</option>
+                        <option value="40">{{ t('settings.page40') }}</option>
+                        <option value="80">{{ t('settings.page80') }}</option>
+                        <option value="custom">{{ t('settings.custom') }}</option>
                       </select>
                       <input
                         v-if="pageSizeMode === 'custom'"
@@ -598,12 +609,12 @@ watch(tab, (t) => {
                         max="999"
                         class="settings-input"
                         style="width: 5rem"
-                        placeholder="条数"
+                        :placeholder="t('settings.countPlaceholder')"
                       />
                     </div>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">历史保留</span>
+                    <span class="settings-field-label">{{ t('settings.historyRetention') }}</span>
                     <div class="settings-unit-row">
                       <input
                         v-model.number="form.history_retention_days"
@@ -612,13 +623,13 @@ watch(tab, (t) => {
                         max="3650"
                         class="settings-input"
                       />
-                      <span class="settings-unit">天</span>
+                      <span class="settings-unit">{{ t('settings.days') }}</span>
                     </div>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">默认排序</span>
+                    <span class="settings-field-label">{{ t('settings.defaultSort') }}</span>
                     <select v-model="form.default_sort" class="settings-input">
-                      <option v-for="opt in GALLERY_SORT_OPTIONS" :key="opt.value" :value="opt.value">
+                      <option v-for="opt in getGallerySortOptions()" :key="opt.value" :value="opt.value">
                         {{ opt.label }}
                       </option>
                     </select>
@@ -627,35 +638,35 @@ watch(tab, (t) => {
               </section>
 
               <section class="settings-block">
-                <h3 class="settings-block-title">文件监听</h3>
+                <h3 class="settings-block-title">{{ t('settings.fileWatch') }}</h3>
                 <label class="settings-field">
-                  <span class="settings-field-label">忽略的目录</span>
+                  <span class="settings-field-label">{{ t('settings.ignoreDirs') }}</span>
                   <input
                     v-model="form.watch_ignore_dirs"
                     type="text"
                     class="settings-input"
-                    placeholder="如 cache,.git（逗号分隔目录名）"
+                    :placeholder="t('settings.ignoreDirsPlaceholder')"
                   />
-                  <span class="settings-field-hint">匹配目录名的子目录不扫描、不监听（新增文件不会自动入库）</span>
+                  <span class="settings-field-hint">{{ t('settings.ignoreDirsHint') }}</span>
                 </label>
               </section>
 
               <section class="settings-block">
-                <h3 class="settings-block-title">数据备份</h3>
+                <h3 class="settings-block-title">{{ t('settings.backupSection') }}</h3>
                 <div class="flex flex-wrap items-center gap-3">
-                  <button type="button" class="settings-btn" @click="onExportData">导出数据</button>
-                  <button type="button" class="settings-btn" @click="onPickImportFile">导入数据</button>
+                  <button type="button" class="settings-btn" @click="onExportData">{{ t('settings.exportBtn') }}</button>
+                  <button type="button" class="settings-btn" @click="onPickImportFile">{{ t('settings.importBtn') }}</button>
                   <input ref="importFileInput" type="file" accept="application/json,.json" class="hidden" @change="onImportFilePick" />
-                  <span class="settings-field-hint">备份当前库的收藏 / 播放记录 / 专辑 / 分类顺序 + 全局设置，换机迁移用</span>
+                  <span class="settings-field-hint">{{ t('settings.backupHint') }}</span>
                 </div>
               </section>
 
               <section class="settings-block">
-                <h3 class="settings-block-title">维护</h3>
+                <h3 class="settings-block-title">{{ t('settings.maintenance') }}</h3>
                 <div class="flex flex-wrap items-center gap-3">
-                  <button type="button" class="settings-btn" @click="onClearHistory">清空播放记录</button>
-                  <button type="button" class="settings-btn" @click="onRestart">重启服务</button>
-                  <span class="settings-field-hint">缩略图并发数需重启服务生效</span>
+                  <button type="button" class="settings-btn" @click="onClearHistory">{{ t('settings.clearHistoryBtn') }}</button>
+                  <button type="button" class="settings-btn" @click="onRestart">{{ t('settings.restartBtn') }}</button>
+                  <span class="settings-field-hint">{{ t('settings.thumbWorkersHint') }}</span>
                 </div>
               </section>
             </template>
@@ -664,12 +675,12 @@ watch(tab, (t) => {
 
         <footer class="settings-footer">
           <select v-model="settingsScope" class="settings-input" style="width: auto; min-width: 8rem">
-            <option value="global">全局设置</option>
-            <option value="library">当前库设置</option>
+            <option value="global">{{ t('settings.scopeGlobal') }}</option>
+            <option value="library">{{ t('settings.scopeLibrary') }}</option>
           </select>
           <div class="flex gap-2">
-            <button type="button" class="settings-btn" @click="close">取消</button>
-            <button type="button" class="settings-btn settings-btn--primary" @click="save">保存</button>
+            <button type="button" class="settings-btn" @click="close">{{ t('common.cancel') }}</button>
+            <button type="button" class="settings-btn settings-btn--primary" @click="save">{{ t('common.save') }}</button>
           </div>
         </footer>
       </div>

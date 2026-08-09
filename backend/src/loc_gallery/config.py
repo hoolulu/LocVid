@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Loc Gallery 配置与路径常量。"""
+"""LocVid 配置与路径常量。"""
 from __future__ import annotations
 
 import os

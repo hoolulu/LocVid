@@ -1,11 +1,17 @@
-# Loc Gallery — 产品需求文档（PRD）
+# LocVid — 产品需求文档（PRD）
 
 | 项目 | 说明 |
 |------|------|
-| 产品名称 | Loc Gallery |
-| 版本 | 12.1.0 |
-| 文档版本 | 2026-08-08 |
+| 产品名称 | LocVid（本地影库） |
+| 版本 | 14.0.0 |
+| 文档版本 | 2026-08-09 |
 | 运行环境 | Windows 本地（127.0.0.1） |
+
+> **English**: LocVid is a private, single-user, local video library web service for Windows.
+> Double-click `restart.py` to start; browse/search/play/organize your videos in the browser.
+> Key capabilities: multi-library, thumbnail grid, favorites/history/albums, movi-player playback
+> (WASM demux + Range streaming), hover preview, data backup, drag-sortable category/folder tree,
+> i18n (中文 / English). Detailed specs follow in Chinese below.
 
 ---
 
@@ -13,7 +19,7 @@
 
 ### 1.1 定位
 
-Loc Gallery 是一款**本地视频画廊 Web 应用**：在浏览器中浏览、搜索、播放本机视频库，支持收藏、播放历史、专辑整理与缩略图管理。所有数据与媒体文件均保存在用户本机，无需账号与云端。
+LocVid 是一款**本地视频画廊 Web 应用**：在浏览器中浏览、搜索、播放本机视频库，支持收藏、播放历史、专辑整理与缩略图管理。所有数据与媒体文件均保存在用户本机，无需账号与云端。
 
 ### 1.2 目标用户
 
@@ -358,4 +364,4 @@ python restart.py --build
 
 ---
 
-*本文档描述 Loc Gallery 当前实现的产品行为，随版本迭代更新。*
+*本文档描述 LocVid 当前实现的产品行为，随版本迭代更新。*

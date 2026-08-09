@@ -594,11 +594,23 @@ async def lifespan(app: FastAPI):
     _stop_watchers()
 
 
-app = FastAPI(title="Loc Gallery", lifespan=lifespan)
+app = FastAPI(title="LocVid", lifespan=lifespan)
 _SERVER_BOOT_ID = uuid.uuid4().hex
 _static_dir = WEB_ROOT / "static"
 if _static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception_i18n_handler(request: Request, exc: HTTPException):
+    """HTTPException detail 按 Accept-Language 双语翻译（固定文案原文即 key）。"""
+    from fastapi.responses import JSONResponse
+    from loc_gallery.i18n import get_lang, translate_detail
+
+    detail = exc.detail
+    if isinstance(detail, str):
+        detail = translate_detail(detail, get_lang(request))
+    return JSONResponse(status_code=exc.status_code, content={"detail": detail})
 _demo_dir = WEB_ROOT / "static" / "demo"
 if _demo_dir.is_dir():
     app.mount(
@@ -976,7 +988,7 @@ async def index():
                 "Pragma": "no-cache",
             },
         )
-    return {"ok": True, "service": "Loc Gallery Vue API", "health": "/api/health"}
+    return {"ok": True, "service": "LocVid Vue API", "health": "/api/health"}
 
 
 @app.get("/api/libraries")

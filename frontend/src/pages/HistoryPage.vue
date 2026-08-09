@@ -4,6 +4,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import CategorySidebar from '@/components/layout/CategorySidebar.vue'
 import VideoCard from '@/components/gallery/VideoCard.vue'
 import BrowsePagination from '@/components/gallery/BrowsePagination.vue'
+import { t } from '@/i18n'
 import { useGalleryPlay } from '@/composables/useGalleryPlay'
 import { showVideoContextMenu } from '@/composables/useVideoContextActions'
 import { useGalleryStore } from '@/stores/gallery'
@@ -59,16 +60,16 @@ function onVideoContext(e: MouseEvent, videoId: string) {
       <CategorySidebar v-if="settings.preset === 'youtube'" />
       <main class="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
         <div class="mb-4 flex shrink-0 items-center gap-3">
-          <h2 class="text-lg font-medium">最近播放</h2>
-          <span class="text-sm text-[var(--lg-text-muted)]">共 {{ gallery.total }} 个</span>
+          <h2 class="text-lg font-medium">{{ t('history.title') }}</h2>
+          <span class="text-sm text-[var(--lg-text-muted)]">{{ t('page.count', { n: gallery.total }) }}</span>
         </div>
         <div
           v-if="!gallery.loading && !gallery.videos.length"
           class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm text-[var(--lg-text-muted)]"
         >
           <span class="text-3xl opacity-60">▶</span>
-          <span>还没有播放记录</span>
-          <span>播放过的视频会按时间出现在这里</span>
+          <span>{{ t('history.empty') }}</span>
+          <span>{{ t('history.emptyHint') }}</span>
         </div>
         <div
           v-else

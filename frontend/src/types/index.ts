@@ -134,11 +134,6 @@ export interface Settings {
   [key: string]: unknown
 }
 
-export const FORMAT_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '全部格式' },
-  { value: 'unsupported', label: '无法播放' },
-]
-
 export type ViewMode = 'browse' | 'favorites' | 'history' | 'albums' | 'album-detail'
 export type SortMode =
   | 'page'

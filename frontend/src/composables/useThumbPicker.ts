@@ -1,4 +1,5 @@
 import { generateThumbCandidates } from '@/api/thumbs'
+import { t } from '@/i18n'
 import { useUiStore } from '@/stores/ui'
 
 export async function openThumbPicker(videoId: string, subtitle = ''): Promise<boolean> {
@@ -12,7 +13,7 @@ export async function openThumbPicker(videoId: string, subtitle = ''): Promise<b
       version: res.version || String(Date.now()),
     })
   } catch {
-    ui.showToast('无法生成候选缩略图')
+    ui.showToast(t('thumb.noCandidates'))
     return false
   }
 }

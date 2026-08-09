@@ -8,6 +8,8 @@ import { generateThumbCandidates, pickThumbCandidate } from '@/api/thumbs'
 
 import { openThumbPicker } from '@/composables/useThumbPicker'
 
+import { t } from '@/i18n'
+
 
 
 export async function regenerateThumbSmart(videoId: string) {
@@ -32,7 +34,7 @@ export async function regenerateThumbSmart(videoId: string) {
 
       if (!cands.length) {
 
-        ui.showToast('未能生成候选缩略图')
+        ui.showToast(t('thumb.noCandidatesRetry'))
 
         return false
 
@@ -42,7 +44,7 @@ export async function regenerateThumbSmart(videoId: string) {
 
       await pickThumbCandidate(videoId, best.index)
 
-      ui.showToast(`已自动选择最优帧（${Math.round(best.pos * 100)}%）`)
+      ui.showToast(t('thumb.autoSelected', { pct: Math.round(best.pos * 100) }))
 
       await gallery.loadVideos()
 
@@ -50,7 +52,7 @@ export async function regenerateThumbSmart(videoId: string) {
 
     } catch {
 
-      ui.showToast('自动选帧失败，请手动选择')
+      ui.showToast(t('thumb.autoPickFailed'))
 
     }
 

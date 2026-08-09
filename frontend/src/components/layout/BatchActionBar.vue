@@ -6,6 +6,7 @@ import { batchFavorites, deleteVideos } from '@/api/files'
 
 import { batchRegenerateThumb } from '@/api/thumbs'
 import { openThumbPicker } from '@/composables/useThumbPicker'
+import { t } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 
 import { useGalleryStore } from '@/stores/gallery'
@@ -37,7 +38,7 @@ async function onSelectAll() {
 
 async function onDelete() {
 
-  const ok = await ui.showConfirm(`删除后视频会移入回收站，收藏/历史/专辑记录会一并移除。`, `确定删除 ${ids.value.length} 个视频？`)
+  const ok = await ui.showConfirm(t('batch.deleteConfirm'), t('batch.deleteN', { n: ids.value.length }))
   if (!ok) return
 
   await deleteVideos(ids.value)
@@ -46,7 +47,7 @@ async function onDelete() {
 
   await gallery.loadVideos()
 
-  ui.showToast('已删除')
+  ui.showToast(t('batch.deleted'))
 
 }
 
@@ -93,14 +94,14 @@ async function onBatchRegenThumb() {
       await openThumbPicker(id, `${i + 1}/${videoIds.length} · ${title}`)
     }
     await gallery.loadVideos()
-    ui.showToast('批量换图完成')
+    ui.showToast(t('batch.regenDone'))
     return
   }
 
   await batchRegenerateThumb(videoIds, true)
   ui.clearSelection(true)
   await gallery.loadVideos()
-  ui.showToast('已加入换图队列')
+  ui.showToast(t('thumb.queued'))
 }
 
 </script>
@@ -117,23 +118,23 @@ async function onBatchRegenThumb() {
 
   >
 
-    <span class="text-sm">已选 {{ ui.selectedCount }} 项</span>
+    <span class="text-sm">{{ t('batch.selected', { n: ui.selectedCount }) }}</span>
 
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onSelectAll">全选</button>
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="ui.clearSelection()">取消全选</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onSelectAll">{{ t('batch.selectAll') }}</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="ui.clearSelection()">{{ t('batch.deselectAll') }}</button>
 
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onFavorite(true)">收藏</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onFavorite(true)">{{ t('batch.favorite') }}</button>
 
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onFavorite(false)">取消收藏</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onFavorite(false)">{{ t('batch.unfavorite') }}</button>
 
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onAddToAlbum">加入专辑</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onAddToAlbum">{{ t('batch.addAlbum') }}</button>
 
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onBatchMove">移动</button>
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onBatchRegenThumb">换缩略图</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onBatchMove">{{ t('batch.move') }}</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="onBatchRegenThumb">{{ t('batch.regenThumb') }}</button>
 
-    <button class="rounded border border-red-500/50 px-3 py-1 text-sm text-red-400" @click="onDelete">删除</button>
+    <button class="rounded border border-red-500/50 px-3 py-1 text-sm text-red-400" @click="onDelete">{{ t('batch.delete') }}</button>
 
-    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="ui.clearSelection(true)">取消</button>
+    <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="ui.clearSelection(true)">{{ t('common.cancel') }}</button>
 
   </div>
 

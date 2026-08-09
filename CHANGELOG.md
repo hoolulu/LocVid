@@ -2,6 +2,44 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [14.0.0] - 2026-08-09
+
+### Added (English)
+
+- **Project renamed to LocVid**: repo renamed from Loc-Gallery (old URL auto-redirects); About & Topics updated; docs are now English-first with Chinese after.
+- **Full UI internationalization (i18n)**: light-weight built-in i18n (no new deps) with `zh`/`en` dictionaries (436 keys), language follows the browser by default, switchable in Settings → Other → Language (persisted).
+- **Backend error i18n**: HTTPException details (video/album/library not found, validation errors, etc.) translate by `Accept-Language`; frontend API client sends the current UI language automatically.
+- **Docs bilingual**: README (English first, Chinese after), CHANGELOG entries (English first, Chinese after), PRD head section.
+- **Branding**: header logo & `<title>` show LocVid; [LocGallery] console tags → [LocVid].
+- **One-click stop script** `stop.py`: stops backend, frontend dev server and cleans up any ffmpeg/ffprobe processes — safe to rename/move the project folder afterwards.
+- **Remux robustness**: auto-remux failure blacklist (a failed file is not retried every 60s while unchanged); failed `.bak` deletions are queued and retried; disk-space pre-check before remux.
+
+### Fixed (English)
+
+- **Header logo showed "Loc Vid"**: `.app-header-logo` is a flex container with `gap`; the bare "Vid" text node became a separate flex item adding a visual gap — the wordmark is now wrapped in one span so "LocVid" stays a single word.
+- **Nav bar / dropdowns did not refresh on language switch**: `navItems`, theme presets, settings tabs and sidebar sort options were plain arrays evaluated once at setup; converted to `computed` so labels re-evaluate when the language changes.
+- **Playback status messages stuck after a language switch**: status-clear timers compared `statusText` against freshly translated prefixes; the prefix is now captured at set time (closure).
+- **Sidebar drag & drop regression**: adding `:model-value` to `VueDraggable` switched the library into controlled mode with no `update:model-value` handler, so the order never persisted; reverted to the `:list` + `@end` pattern (the component's required `modelValue` typing is suppressed with `@vue-ignore`).
+- **Top-level categories had no folder icon** while subfolders did; the row structure (chevron placeholder + always-present glyph) is now identical for categories and subfolders.
+
+### 新增（中文）
+
+- **项目更名 LocVid**：仓库从 Loc-Gallery 改名（旧 URL 自动 301），About 与 Topics 已更新；文档改为英文在前、中文在后。
+- **界面全量国际化**：自研轻量 i18n（无新依赖），zh/en 双语字典 436 键；默认跟随浏览器语言，设置 → 其他 → 界面语言 可切换并持久化。
+- **后端错误国际化**：HTTPException detail（视频/专辑/视频库不存在、校验错误等）按请求 `Accept-Language` 翻译；前端 API 自动携带当前界面语言。
+- **文档双语**：README（英文在前中文在后）、CHANGELOG 条目（英文在前中文在后）、PRD 头部。
+- **品牌**：Header logo 与 `<title>` 显示 LocVid；[LocGallery] 控制台标记 → [LocVid]。
+- **一键停止脚本** `stop.py`：停止后端与前端开发服务，并清理 ffmpeg/ffprobe 进程——改名/移动目录前使用更安全。
+- **修复机制加固**：后台自动修复失败黑名单（文件未变化不再每 60 秒重试）；`.bak` 删除失败自动入队重试；重封装前磁盘空间预检。
+
+### 修复（中文）
+
+- **Header logo 曾显示 "Loc Vid"**：`.app-header-logo` 为 flex + gap，裸文本 "Vid" 成为独立 flex item 产生空隙；现将文字包裹为整体，保证 LocVid 连写。
+- **导航条/下拉框切语言不刷新**：navItems、主题选项、设置页标签、侧栏排序选项原为普通数组（setup 时求值一次）；已改为 computed，随语言实时重算。
+- **切语言后播放状态提示不消失**：状态清除定时器原用实时翻译的前缀比对；现改为设置时闭包捕获前缀。
+- **左栏拖拽失效回归**：为 VueDraggable 添加 `:model-value` 使库进入受控模式且无 `update:model-value` 处理，排序不再持久化；已恢复 `:list` + `@end` 写法（组件必需 modelValue 的类型检查用 `@vue-ignore` 抑制）。
+- **顶层分类缺目录图标**：分类与子目录行结构现完全一致（箭头占位 + 常驻图标）。
+
 ## [13.0.0] - 2026-08-09
 
 ### 重大变更
@@ -214,4 +252,4 @@
 
 ## [8.1.0] 及更早版本
 
-历史记录见 Git 提交与 [GitHub Releases](https://github.com/hoolulu/Loc-Gallery/releases)。
+历史记录见 Git 提交与 [GitHub Releases](https://github.com/hoolulu/LocVid/releases)。

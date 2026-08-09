@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { addVideosToAlbum, removeVideosFromAlbum } from '@/api/albums'
+import { t } from '@/i18n'
 import { useAlbumStore } from '@/stores/album'
 import { useGalleryStore } from '@/stores/gallery'
 import { usePlayerStore } from '@/stores/player'
@@ -20,8 +21,8 @@ const initialChecked = reactive<Record<string, boolean>>({})
 const hint = computed(() => {
   const n = ui.albumPickerIds.length
   return n === 1
-    ? '勾选要加入的专辑，取消勾选将从专辑移除。'
-    : `为 ${n} 个视频选择专辑归属。`
+    ? t('album.pickerHint')
+    : t('album.pickerForVideos', { n })
 })
 
 function videoById(id: string) {
@@ -59,11 +60,11 @@ async function createAlbum() {
       // 新专辑默认勾选（加入当前视频）；initialChecked 留 false，让 confirm 视为"新增归属"，
       // 由 confirm 统一调 addVideosToAlbum 保证前后端一致（这里不改内存 albumIds）
       checked[id] = true
-      ui.showToast(`已创建专辑「${name}」`)
+      ui.showToast(t('album.created', { name }))
     }
     newAlbumName.value = ''
   } catch (err) {
-    ui.showToast(`创建专辑失败: ${err instanceof Error ? err.message : String(err)}`)
+    ui.showToast(t('album.createFailed', { msg: err instanceof Error ? err.message : String(err) }))
   } finally {
     creating.value = false
   }
@@ -103,7 +104,7 @@ watch(
       await album.loadAlbums()
       initCheckboxes()
     } catch (err) {
-      ui.showToast(`加载专辑列表失败: ${err instanceof Error ? err.message : String(err)}`)
+      ui.showToast(t('album.loadFailed', { msg: err instanceof Error ? err.message : String(err) }))
       ui.closeAlbumPicker()
     } finally {
       loading.value = false
@@ -129,7 +130,7 @@ async function confirm() {
   }
 
   if (!ops.length) {
-    ui.showToast('专辑归属未变更')
+    ui.showToast(t('album.unchanged'))
     ui.closeAlbumPicker()
     return
   }
@@ -145,10 +146,10 @@ async function confirm() {
         op.remove.forEach((id) => patchVideoAlbumIds(id, op.albumId, false))
       }
     }
-    ui.showToast('专辑归属已更新')
+    ui.showToast(t('album.updated'))
     ui.closeAlbumPicker()
   } catch (err) {
-    ui.showToast(`更新专辑归属失败: ${err instanceof Error ? err.message : String(err)}`)
+    ui.showToast(t('album.updateFailed', { msg: err instanceof Error ? err.message : String(err) }))
   }
 }
 
@@ -164,7 +165,7 @@ function close() {
     class="album-picker-dialog fixed inset-0 z-[250] m-auto w-full max-w-md rounded-lg border border-[var(--lg-border)] bg-[var(--lg-bg-elevated)] p-0 text-[var(--lg-text-primary)] shadow-2xl backdrop:bg-black/60"
   >
     <div class="flex items-center justify-between border-b border-[var(--lg-border)] px-4 py-3">
-      <h2 class="text-lg font-medium">加入专辑</h2>
+      <h2 class="text-lg font-medium">{{ t('album.add') }}</h2>
       <button type="button" class="rounded px-2 py-1 lg-hover" @click="close">✕</button>
     </div>
     <p class="px-4 pt-3 text-sm text-[var(--lg-text-muted)]">{{ hint }}</p>
@@ -172,7 +173,7 @@ function close() {
       <input
         v-model="newAlbumName"
         type="text"
-        placeholder="新专辑名称，回车直接创建"
+        placeholder="{{ t('album.newNamePlaceholder') }}"
         class="min-w-0 flex-1 rounded border border-[var(--lg-border)] bg-transparent px-2 py-1 text-sm outline-none focus:border-[var(--lg-accent)]"
         :disabled="creating"
         @keydown.enter="createAlbum"
@@ -183,13 +184,13 @@ function close() {
         :disabled="!newAlbumName.trim() || creating"
         @click="createAlbum"
       >
-        ＋ 新建
+        {{ t('album.createShort') }}
       </button>
     </div>
     <div class="max-h-64 overflow-y-auto p-3">
-      <div v-if="loading" class="py-8 text-center text-sm text-[var(--lg-text-muted)]">加载中…</div>
+      <div v-if="loading" class="py-8 text-center text-sm text-[var(--lg-text-muted)]">{{ t('common.loading') }}</div>
       <p v-else-if="!album.albums.length" class="py-6 text-center text-sm text-[var(--lg-text-muted)]">
-        还没有专辑，在上方输入名称直接创建。
+        {{ t('album.empty') }}
       </p>
       <label
         v-for="a in album.albums"
@@ -199,12 +200,12 @@ function close() {
       >
         <input v-model="checked[a.id]" type="checkbox" :value="a.id" />
         <span class="album-picker-name">{{ a.name }}</span>
-        <span class="album-picker-count">{{ a.video_count || 0 }} 个视频</span>
+        <span class="album-picker-count">{{ t('album.videoCount', { n: a.video_count || 0 }) }}</span>
       </label>
     </div>
     <div class="flex justify-end gap-2 border-t border-[var(--lg-border)] px-4 py-3">
       <button type="button" class="rounded border border-[var(--lg-border)] px-4 py-2 text-sm" @click="close">
-        取消
+        {{ t('common.cancel') }}
       </button>
       <button
         type="button"
@@ -212,7 +213,7 @@ function close() {
         :disabled="loading"
         @click="confirm"
       >
-        确定
+        {{ t('common.confirm') }}
       </button>
     </div>
   </dialog>

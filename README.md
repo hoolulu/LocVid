@@ -1,4 +1,301 @@
-# Loc Gallery
+# LocVid — Local Video Library
+
+**Double-click to start a local video library web service — browse, search, play and organize every video on your hard drives in the browser.**
+
+> Vue 3 · Classic / Cinema layouts · Single-port dev hot-reload · i18n (English / 中文)
+
+LocVid scans your local video folders, auto-generates a thumbnail grid, and supports category filtering, favorites, play history, albums, an embedded player (movi-player, WASM demux + direct streaming) and an external-player fallback. Built for large Windows-local libraries: new videos are indexed as soon as they are copied in, files still downloading are never mis-reported as failed, and externally deleted files are pruned from favorites/history/albums automatically.
+
+**Default address:** `http://127.0.0.1:3460`
+
+---
+
+### ✨ At a Glance
+
+<table width="100%">
+<tr><td style="white-space: nowrap; width: 1%;"><b>🖱 One-click start</b></td><td>Double-click <code>restart.py</code> → stops old process, installs deps, starts service, opens browser</td></tr>
+<tr><td style="white-space: nowrap;"><b>📚 Multi-library</b></td><td>Switch between multiple local folders from the top bar; favorites/history/albums/thumbnails are isolated per library</td></tr>
+<tr><td style="white-space: nowrap;"><b>📂 Local folders</b></td><td>Recursively scans each library root; top-level subdirectories become "categories"</td></tr>
+<tr><td style="white-space: nowrap;"><b>🖼 Smart thumbnails</b></td><td>Generated on demand for the current page; unstable (downloading/writing) files are processed after they settle</td></tr>
+<tr><td style="white-space: nowrap;"><b>📺 Episode auto-play</b></td><td>Playlist supports natural filename sort; the player auto-plays the next episode</td></tr>
+<tr><td style="white-space: nowrap;"><b>▶ Reliable playback</b></td><td>movi-player embedded player (WASM demux + Range streaming); resume & autoplay configurable; external player auto-detected (default PotPlayer)</td></tr>
+<tr><td style="white-space: nowrap;"><b>♥ Favorites & History</b></td><td>Card favorites, recently played, play counts and <strong>resume progress</strong>; auto-cleanup after external deletion</td></tr>
+<tr><td style="white-space: nowrap;"><b>📈 Most Played</b></td><td>Dedicated top-bar view ranked by play count; sort options include "Most/Least played"</td></tr>
+<tr><td style="white-space: nowrap;"><b>📁 Albums</b></td><td>Custom collections, many-to-many membership; create-album-in-picker, play-all, in-player add</td></tr>
+<tr><td style="white-space: nowrap;"><b>🔀 Drag-sortable sidebar</b></td><td>Drag to reorder categories and folders (custom mode); real-time filter box on top</td></tr>
+<tr><td style="white-space: nowrap;"><b>🏷 Format handling</b></td><td>Auto remux (repair) for fragmented / multi-mdat MP4 before playback (background batch pre-repair); unsupported codecs prompt for an external player</td></tr>
+<tr><td style="white-space: nowrap;"><b>⏱ Duration</b></td><td>Shown on cards; probed by ffprobe in background and cached in the index</td></tr>
+<tr><td style="white-space: nowrap;"><b>🔄 Real-time sync</b></td><td>File watching + SSE push; new videos are indexed and queued automatically</td></tr>
+<tr><td style="white-space: nowrap;"><b>💾 Data backup</b></td><td>One-click export/import of favorites, history, albums, category order and settings (JSON) for migration</td></tr>
+<tr><td style="white-space: nowrap;"><b>🎨 Layout & theme</b></td><td>Classic / Cinema layouts; dark / light theme; one-click toggle in the header</td></tr>
+<tr><td style="white-space: nowrap;"><b>🌐 i18n</b></td><td>English / 中文 UI, follows the browser language by default; switch in Settings → Other → Language</td></tr>
+</table>
+
+<table width="100%">
+<tr><th>Action</th><th>Description</th></tr>
+<tr><td style="white-space: nowrap;">Double-click <code>restart.py</code></td><td>Start / restart (dev mode with frontend hot-reload)</td></tr>
+<tr><td style="white-space: nowrap;"><code>restart.py --build</code></td><td>Production mode: build frontend, then serve it from the backend</td></tr>
+<tr><td style="white-space: nowrap;"><code>python stop.py</code></td><td>Stop backend &amp; frontend dev server, and clean up any ffmpeg/ffprobe processes (use before renaming/moving the folder)</td></tr>
+<tr><td>Top bar "♥ Favorites"</td><td>Show only favorited videos</td></tr>
+<tr><td>Top bar "⏱ Recently Played"</td><td>Browse by last-played time (desc)</td></tr>
+<tr><td>Top bar "📈 Most Played"</td><td>Browse all videos ranked by play count</td></tr>
+<tr><td>Top bar "📁 Albums"</td><td>Album list & detail; add via context menu / batch bar / player</td></tr>
+<tr><td>Top bar "Refresh"</td><td>Force a full rescan of the library</td></tr>
+<tr><td>Hover a card → ♥ / 📁</td><td>Favorite / manage album membership</td></tr>
+<tr><td>"Batch" mode</td><td>Multi-select delete, move, batch favorite, add to album, regen thumbnails</td></tr>
+</table>
+
+### Screenshots
+
+> Placeholder demo data. 10.0.0+ is the Vue 3 rebuild with upgraded UI/UX.
+
+**Gallery** — category & folder tree on the left, paginated thumbnail grid.
+
+<p align="center"><img src="doc/screenshots/gallery.png" width="100%" alt="Gallery" /></p>
+
+**Player** — in-page player with right-hand playlist; sortable, prev/next, autoplay.
+
+<p align="center"><img src="doc/screenshots/player.png" width="100%" alt="Player" /></p>
+
+**Favorites / History / Settings / Batch** — see below.
+
+<p align="center"><img src="doc/screenshots/favorites.png" width="100%" alt="Favorites" /></p>
+<p align="center"><img src="doc/screenshots/history.png" width="100%" alt="History" /></p>
+<p align="center"><img src="doc/screenshots/settings.png" width="100%" alt="Settings" /></p>
+<p align="center"><img src="doc/screenshots/batch.png" width="100%" alt="Batch selection" /></p>
+
+---
+
+## 1. Why
+
+Pain points with large local video libraries: no previews in folders; weak built-in players; heavy NAS/media-server setups; failed thumbnails for still-downloading files.
+
+LocVid's approach: **a lightweight local web service** — browser as the UI, ffmpeg as the engine. Files are scanned in place (no moving, no transcoding into the library); playback goes through movi-player (WASM demux) with auto-remux for broken structures; unstable files are held until they settle.
+
+## 2. Who Is It For
+
+- Managing **large local video collections** on Windows (mixed categories/formats)
+- Want **fast thumbnail browsing** in a browser, embedded or external playback
+- Need **favorites, play history, batch organization** — without multi-user / public access / metadata scraping
+- Have **disguised formats** (e.g. PNG header + MPEG-TS) or huge files — movi-player's WASM demuxer handles them directly
+
+**Not for:** multi-user remote access, mobile apps, TMDB scraping, cloud sync.
+
+## 3. Core Capabilities
+
+| Module | Capability |
+|--------|-----------|
+| **Multi-library** | Multiple roots, top-bar switching, per-library data isolation; `data/libraries.json` + `data/libraries/{id}/` |
+| **Gallery** | Virtual-scroll grid, search (suggestions/history/highlight), many sort modes (incl. most-played), folder tree, breadcrumb |
+| **Layout & theme** | Classic / Cinema; dark / light; unified sidebar & pagination across all pages |
+| **Category management** | Drag-sort categories & folders (custom mode), sort modes, top filter box |
+| **Thumbnails** | On-demand / background backfill, queue progress, failure retry, candidate picking (sharpness scoring), async batch regen |
+| **Playback** | movi-player (WASM demux + `/api/stream` Range); hotkeys (C/X/Z speed with memory, Space play/pause, ←/→ seek, Enter fullscreen); configurable autoplay & resume; background auto-remux |
+| **Favorites & History** | Persistent JSON; play counts & resume progress; auto-prune on deletion; id migration on rename/move |
+| **Most Played** | Top-bar view + sort options ranked by play count |
+| **Albums** | Per-library `albums.json`; many-to-many; cover = first video's thumbnail; create-in-picker; id migration on rename/move |
+| **Format handling** | Pre-play remux (fragmented/multi-mdat); background batch pre-repair; "Not Playable" badge only for undecodable codecs |
+| **File management** | Delete (Recycle Bin), rename (no-extension dialog, extension preserved), move, open folder, properties panel |
+| **Data backup** | Export/import favorites/history/albums/category order/settings (JSON) |
+| **Stability** | Deferred indexing of unstable files; size/mtime change resets thumb state; watchdog event coalescing (no O(n²)); atomic JSON writes |
+
+> Full specs: [doc/PRD.md](./doc/PRD.md).
+
+## 4. How It Works
+
+```
+① Scan & index — watchdog multi-library watching + stability detection → per-library cache → in-memory index + version
+         ↓
+② Thumbnails  — current page high-priority queue → ffmpeg frame grab → data/libraries/{id}/.thumbs/
+         ↓
+③ Play plan   — ffprobe codec/container probe → playback_plans.json → direct / auto-remux
+         ↓
+④ Frontend    — SSE progress → grid cards + movi-player + favorites/history views
+```
+
+**Downloading files:** change events → "stabilizing" queue → indexed once size/mtime settle → thumbnails & probe queued; previously mis-marked failures are reconciled.
+
+## 5. Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Browser (Vue 3 SPA / Vite)                 │
+│  pages · components · Pinia · movi-player               │
+└────────────────────────┬────────────────────────────────┘
+                         │ HTTP / SSE (Vite proxy /api in dev)
+┌────────────────────────▼────────────────────────────────┐
+│              FastAPI (loc_gallery.server)                │
+│  REST API · static assets (prod) · SSE push             │
+├──────────┬──────────┬──────────┬──────────┬─────────────┤
+│  scanner │thumb_mgr │remux_mgr │media_probe│library/    │
+│          │          │(repair)  │          │favorite/   │
+│          │          │          │          │history/    │
+│          │          │          │          │album_store │
+└────┬─────┴────┬─────┴────┬─────┴────┬─────┴──────┬──────┘
+     ▼          ▼          ▼          ▼            ▼
+  library    libraries/   (in-place  playback    favorites.json
+  roots      {id}/.thumbs  repaired)  _plans.json play_history.json
+              libraries.json          albums.json
+```
+
+| Layer | Tech |
+|-------|------|
+| Frontend | Vue 3, TypeScript, Vite, Pinia, Tailwind CSS 4, movi-player |
+| Web framework | FastAPI, uvicorn |
+| File watching | watchdog |
+| Media | ffmpeg, ffprobe |
+| Runtime | Python 3.10+, Node.js 18+ (dev/build), Windows 10/11 |
+
+## 6. Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| OS | Windows 10/11 |
+| Python | 3.10+ |
+| Node.js | 18+ (dev mode & `--build`; `restart.py` can auto-run `npm install` on first start) |
+| ffmpeg / ffprobe | Must be on PATH |
+
+## 7. Install
+
+### AI-assisted (recommended)
+
+Paste this prompt into Cursor / OpenCode / Claude Code:
+
+```text
+Research https://github.com/hoolulu/LocVid and follow its README to install locally:
+1. Clone the repo to a suitable directory (Windows)
+2. Ensure Python 3.10+; run python scripts/setup.py (or python restart.py, which installs deps on first run)
+3. Ensure Node.js 18+ and npm (dev mode)
+4. Ensure ffmpeg & ffprobe on PATH (winget install ffmpeg if needed)
+5. Ask for the video library root path, then add it under Settings → Library (never commit real paths)
+6. Run python restart.py and confirm http://127.0.0.1:3460 works
+7. Click Refresh in the top bar to run the first scan
+8. Briefly explain daily usage (restart, settings, favorites/history, classic/cinema layouts)
+Never commit or upload anything under data/.
+```
+
+### Manual
+
+```powershell
+git clone https://github.com/hoolulu/LocVid.git
+cd LocVid
+pip install -r backend/requirements.txt
+cd frontend
+npm install
+cd ..
+python restart.py
+```
+
+Browser opens `http://127.0.0.1:3460`. Add your library path under **Settings → Library**, then click **Refresh**.
+
+## 8. Usage
+
+### Playback page hotkeys (page-level; movi built-in hotkeys disabled)
+
+| Key | Action |
+|-----|--------|
+| C / X / Z | Speed up / normal / slow down (0.1 steps, 0.25x–2x; remembered) |
+| Space | Play / Pause |
+| ← / → | Backward / Forward 5s |
+| Ctrl + ← / → | Backward / Forward 30s |
+| Enter | Toggle fullscreen |
+| Esc | Close player |
+
+### Browsing
+
+- Sidebar: categories & folders; **drag to reorder** (custom sort mode); **filter box** at the top
+- **Search**: title/filename/category/folder, extension-insensitive; suggestions & history; keyword highlight; searches the whole library (clears category/folder filters)
+- **Keyboard grid navigation**: ↑↓←→ move focus, Enter play, F favorite, Esc clear; keys yield to the player when open
+- Hover a card: multi-segment **video preview** (configurable); videos that play but don't support hover preview show a direct notice
+- Right-click a video: Properties / Change Thumbnail / Favorite / Add to Album / Rename / Move / Open Folder / Copy Path / Copy Title / Delete
+- **Batch mode**: multi-select delete (Recycle Bin), move, batch favorite, add to album, regen thumbnails
+
+### Albums
+
+- Create / edit / delete albums; **create directly in the add-to-album picker**
+- Play-all, video count & total duration, right-click "Set as Cover"
+- Membership migrates automatically when a video is renamed/moved
+
+### Data & maintenance
+
+- **Backup**: Settings → Other → Export/Import JSON
+- **Thumbnail maintenance**: stats / clean orphans / regenerate failed
+- **Rename/move safety**: favorites, history, albums, thumbnails and format cache are **migrated** to the new id — nothing is lost or regenerated
+
+## 9. Settings (global)
+
+Saved to `data/settings.json`; full list in [doc/PRD.md](./doc/PRD.md).
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `thumb_position` | 0.6 | Capture position (duration ratio) |
+| `thumb_workers` | 3 | Thumbnail worker count (restart required) |
+| `thumb_idle_scan` | false | Backfill thumbnails for the whole library in background |
+| `thumb_candidate_count` | 6 | Candidate frames per video |
+| `thumb_auto_select_best` | false | Auto-pick best frame (single) |
+| `thumb_batch_auto_select` | true | Auto-pick best frame (batch) |
+| `default_page_size` | 32 | Videos per page (40/80/custom in UI) |
+| `default_sort` | mtime_desc | Default gallery sort |
+| `watch_ignore_dirs` | (empty) | Directory names to skip while scanning/watching |
+| `ui_theme` | dark | dark / light |
+| `ui_preset` | netflix | Cinema (full-width) / Classic (sidebar grid) |
+| `html5_playlist_autoplay` | true | Auto-play next episode |
+| `html5_resume_playback` | true | Remember position and resume |
+| `html5_wheel_seek_sec` | 5 | Wheel seek seconds (0 = off) |
+| `html5_hover_preview` | true | Hover multi-segment preview |
+| `html5_hover_tip_pin` | false | Tooltip dismiss: on mouse leave (default) / via close button |
+| `html5_auto_remux` | true | Background batch remux of repairable files |
+| `external_player_path` | (auto) | External player exe (VLC/MPC-HC/PotPlayer…) |
+| `history_retention_days` | 180 | Play history retention |
+
+## 10. Privacy
+
+Local, single-user by design. When sharing: share `frontend/` `backend/` `scripts/` `doc/` and config templates — **never** `data/` (settings, libraries, logs, thumbs, PIDs). Configure your library paths and PotPlayer path in the Settings page instead of committing them.
+
+## 11. FAQ (excerpt)
+
+- **Library paths**: configure under Settings → Library (Windows folder picker); `config.py`'s `VIDEO_ROOT` is only a local dev seed
+- **Downloading files show failed thumbnails?** Files are indexed only after they settle; stale failures are reconciled automatically
+- **Externally deleted videos?** Pruned from favorites/history/albums on the next library refresh
+- **"Albums" page shows Not Found?** The backend is an old process — run `restart.py` or Settings → Restart Service, then hard-refresh (Ctrl+F5)
+- **Where is resume position?** `data/libraries/{library_id}/play_history.json` → `position_sec`
+- **`restart.py` vs `restart.py --build`?** Dev mode with Vite hot-reload vs. production build served by the backend
+
+## 12. Development
+
+```powershell
+cd <project root>
+# Dev (recommended daily): single port 3460, Vite hot-reload
+python restart.py
+# Backend API only
+python dev_backend.py
+# Frontend alone (backend required)
+cd frontend
+npm run dev
+# Production build
+cd frontend
+npm run build
+# or
+python restart.py --build
+```
+
+### Tests
+
+```powershell
+$env:PYTHONPATH = "<project root>\backend\src"
+python -m pytest backend/tests/test_file_stability.py -v
+python -m unittest backend.tests.test_album_store backend.tests.test_album_api backend.tests.test_multi_library -v
+python backend/tests/test_auto_new_video.py
+```
+
+## 13. Changelog & Docs
+
+- [CHANGELOG.md](./CHANGELOG.md) — releases (English first, Chinese after)
+- [doc/PRD.md](./doc/PRD.md) — product requirements
+
+---
+
+## 中文文档 · LocVid 本地影库
 
 **本地视频画廊 Web 服务 — 双击启动，浏览器里浏览、搜索、播放你的整个视频库**
 
@@ -34,6 +331,7 @@
 <tr><th>操作</th><th>说明</th></tr>
 <tr><td style="white-space: nowrap;">双击 <code>restart.py</code></td><td>启动 / 重启服务（开发模式，支持前端热更新）</td></tr>
 <tr><td style="white-space: nowrap;"><code>restart.py --build</code></td><td>生产模式：先构建前端再由后端托管</td></tr>
+<tr><td style="white-space: nowrap;"><code>python stop.py</code></td><td>停止后端与前端开发服务，并清理 ffmpeg/ffprobe 进程（改名/移动目录前使用）</td></tr>
 <tr><td>顶栏「♥ 我的收藏」</td><td>只看已收藏视频</td></tr>
 <tr><td>顶栏「⏱ 最近播放」</td><td>按播放时间倒序浏览</td></tr>
 <tr><td>顶栏「📈 最多播放」</td><td>按播放次数倒序浏览全库</td></tr>
@@ -82,7 +380,7 @@
 - **NAS / 媒体服务器** → 配置重、要常驻服务、个人单机用不上
 - **下载还没完** → 被索引后缩略图失败，满屏报错
 
-Loc Gallery 的做法是：**只在本机跑一个轻量 Web 服务**，浏览器当界面，ffmpeg 当引擎。文件怎么放磁盘就怎么扫，不搬家、不转码入库；播放统一走 movi-player 直连（WASM demux），异常结构（碎片化/多段 mdat）自动重封装修复。下载中的文件会等稳定后再处理，不会污染失败列表。
+LocVid 的做法是：**只在本机跑一个轻量 Web 服务**，浏览器当界面，ffmpeg 当引擎。文件怎么放磁盘就怎么扫，不搬家、不转码入库；播放统一走 movi-player 直连（WASM demux），异常结构（碎片化/多段 mdat）自动重封装修复。下载中的文件会等稳定后再处理，不会污染失败列表。
 
 ## 二、谁适合用
 
@@ -226,7 +524,7 @@ Loc Gallery 的做法是：**只在本机跑一个轻量 Web 服务**，浏览�
 把下面这段提示词复制到 **Cursor / OpenCode / Claude Code** 等 AI 聊天框发送，AI 会自动完成安装与配置：
 
 ```text
-请调研 https://github.com/hoolulu/Loc-Gallery 项目，按照 README 依次完成本机安装：
+请调研 https://github.com/hoolulu/LocVid 项目，按照 README 依次完成本机安装：
 
 1. 克隆仓库到合适目录（Windows）
 2. 确认 Python 3.10+ 可用；执行 python scripts/setup.py 安装依赖（或运行 python restart.py，首次会自动安装）
@@ -259,14 +557,14 @@ AI 会读取项目文档 → 检测本机环境 → 逐项安装配置 → 启�
 
 ## 九、用 AI 提示词更新项目
 
-项目发布新版本后，想把自己本地已安装的 Loc Gallery 更新到仓库最新代码？复制下面这段**更新提示词**给你的 AI 工具，再告诉它**本地项目路径**，AI 就会按提示词完成「拉取最新代码 → 安装依赖 → 处理本地改动 → 验证 → 告知更新内容」，你的本地项目就升级到最新版了：
+项目发布新版本后，想把自己本地已安装的 LocVid 更新到仓库最新代码？复制下面这段**更新提示词**给你的 AI 工具，再告诉它**本地项目路径**，AI 就会按提示词完成「拉取最新代码 → 安装依赖 → 处理本地改动 → 验证 → 告知更新内容」，你的本地项目就升级到最新版了：
 
 ````markdown
-【系统提示词】你是 Loc Gallery 项目的更新助手。用户已在本地安装 Loc Gallery，现在需要把本地项目更新到 GitHub 仓库的最新版本。
+【系统提示词】你是 LocVid 项目的更新助手。用户已在本地安装 LocVid，现在需要把本地项目更新到 GitHub 仓库的最新版本。
 
 项目信息：
-- 仓库地址：https://github.com/hoolulu/Loc-Gallery
-- 本地路径：（由用户提供，如 D:\Loc-Gallery）
+- 仓库地址：https://github.com/hoolulu/LocVid
+- 本地路径：（由用户提供，如 D:\LocVid）
 
 更新步骤：
 1. 先确认本地项目状态：检查本地路径是否为 git 仓库、当前版本号（VERSION 文件）、本地是否有未提交改动
@@ -450,8 +748,8 @@ python backend/tests/test_auto_new_video.py
 
 ```powershell
 # 1. 克隆
-git clone https://github.com/hoolulu/Loc-Gallery.git
-cd Loc-Gallery
+git clone https://github.com/hoolulu/LocVid.git
+cd LocVid
 
 # 2. Python 依赖
 pip install -r backend/requirements.txt
@@ -481,7 +779,7 @@ python restart.py
 **1. 视频库放哪？项目放哪？**
 
 - **视频库**：在设置 → 视频库管理中配置（支持 Windows 文件夹选择器）
-- **项目**：任意目录均可；扫描时会自动忽略 `Loc-Gallery` / `loc-gallery` 等项目自身目录名
+- **项目**：任意目录均可；扫描时会自动忽略 `LocVid` / `LocVid` 等项目自身目录名
 
 **2. 下载中的视频为什么之前会显示缩略图失败？**
 
@@ -534,7 +832,7 @@ python restart.py
 - **端口 3460 被占用** → 再运行一次 `restart.py`（会先停旧进程）
 - **提示未找到 Vite** → 在 `frontend` 目录执行 `npm install`，或运行 `python scripts/setup.py`
 - **缩略图全失败** → 检查 `ffmpeg -version` 是否在 PATH 中
-- **播放黑屏/卡加载** → 按 F12 看是否有 `[LocGallery]` 或 movi-player 报错；异常文件会自动重封装，硬解不支持的可点「用外部播放器打开」
+- **播放黑屏/卡加载** → 按 F12 看是否有 `[LocVid]` 或 movi-player 报错；异常文件会自动重封装，硬解不支持的可点「用外部播放器打开」
 
 ## 十六、已知限制
 
@@ -549,6 +847,6 @@ python restart.py
 
 ---
 
-**Loc Gallery** — 本地视频，浏览器里看。
+**LocVid** — 本地视频，浏览器里看。
 
 讨论与交流 → [LINUX.DO 社区](https://linux.do)

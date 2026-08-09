@@ -1,3 +1,5 @@
+import { t } from '@/i18n'
+
 export function formatDuration(sec?: number | null): string {
   if (!sec || sec <= 0 || !Number.isFinite(sec)) return ''
   const s = Math.floor(sec)
@@ -38,21 +40,22 @@ export function getSavedPosition(
   return normalizeResumePosition(Number(playPosition), playDuration)
 }
 
-const FORMAT_BADGE_LABELS: Record<string, string> = {
-  special: '特殊',
-  remuxable: '可修复',
-  interleaved: '交错',
-  disguised: '伪装',
-  fragmented: '碎片化',
-  unsupported: '无法播放',
-  hls: 'HLS',
-  moov_end: '慢起播',
-  large: '大文件',
-  transcode: '特殊',
-}
-
+// 函数内现算，保证切语言后 label 实时刷新
 export function formatBadgeLabel(kind?: string | null): string {
   if (!kind) return ''
   const key = kind.toLowerCase()
-  return FORMAT_BADGE_LABELS[key] ?? kind
+  const labels: Record<string, string> = {
+    special: t('other.format.special'),
+    remuxable: t('other.format.repairable'),
+    interleaved: t('other.format.interleaved'),
+    disguised: t('other.format.disguised'),
+    fragmented: t('other.format.fragmented'),
+    unsupported: t('other.format.notPlayable'),
+    hls: 'HLS',
+    moov_end: t('other.format.moovEnd'),
+    large: t('other.format.large'),
+    transcode: t('other.format.special'),
+  }
+  return labels[key] ?? kind
 }
+

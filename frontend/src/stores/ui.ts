@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 
 import { computed, ref } from 'vue'
 
+import { t } from '@/i18n'
+
 import type { ThumbCandidate } from '@/api/thumbs'
 
 
@@ -168,7 +170,7 @@ export const useUiStore = defineStore('ui', () => {
 
     return new Promise<'remux' | 'external' | 'cancel'>((resolve) => {
 
-      nonStandardReason.value = opts.reason || '该视频为碎片化 MP4，浏览器无法直连。'
+      nonStandardReason.value = opts.reason || t('other.fragmentedNoDirect')
 
       nonStandardRemuxable.value = !!opts.remuxable
 
@@ -298,7 +300,7 @@ export const useUiStore = defineStore('ui', () => {
 
 
 
-  function showConfirm(message: string, title = '确认操作'): Promise<boolean> {
+  function showConfirm(message: string, title = t('other.confirmOp')): Promise<boolean> {
     confirmDialog.value = { title, message }
     lockModalScroll(true)
     return new Promise((resolve) => {

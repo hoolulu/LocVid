@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useThumbProgress } from '@/composables/useThumbProgress'
+import { t } from '@/i18n'
 
 const {
   showThumbChip,
@@ -17,12 +18,12 @@ const {
     type="button"
     class="thumb-status-chip"
     :class="{ 'thumb-status-chip--expanded': showBar }"
-    title="视频时长后台探测中，点击展开详情"
-    aria-label="视频时长探测"
+    :title="t('thumb.probeTip')"
+    :aria-label="t('thumb.probeTitle')"
     @click="toggleBar"
   >
     <span class="thumb-status-dot thumb-status-dot--busy" aria-hidden="true" />
-    <span class="thumb-status-label">时长</span>
+    <span class="thumb-status-label">{{ t('thumb.durationLabel') }}</span>
   </button>
 
   <button
@@ -32,10 +33,10 @@ const {
     :class="{ 'thumb-status-chip--expanded': showBar }"
     :title="thumbChipTitle"
     :aria-expanded="showBar ? 'true' : 'false'"
-    aria-label="缩略图，点击查看详情"
+    :aria-label="t('thumb.thumbnailLabel')"
     @click="toggleBar"
   >
     <span class="thumb-status-dot" :class="thumbDotClass" aria-hidden="true" />
-    <span class="thumb-status-label">缩略图</span>
+    <span class="thumb-status-label">{{ t('thumb.thumbnailLabel') }}</span>
   </button>
 </template>

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""一键启动 Loc Gallery（单端口 :3460，Vite 热更新）。"""
+"""一键启动 LocVid（单端口 :3460，Vite 热更新）。"""
 
 import os
 import subprocess
@@ -46,14 +46,14 @@ def main() -> None:
         return
 
     if production:
-        print("=== Loc Gallery · 生产构建模式 ===\n")
+        print("=== LocVid · 生产构建模式 ===\n")
         if not build_frontend():
             input("\n按 Enter 键关闭...")
             return
         stop_all()
         ok = start_production()
     else:
-        print("=== Loc Gallery · 开发模式（单端口）===\n")
+        print("=== LocVid · 开发模式（单端口）===\n")
         stop_all()
         ok = start_dev()
 

@@ -4,6 +4,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import CategorySidebar from '@/components/layout/CategorySidebar.vue'
 import VideoCard from '@/components/gallery/VideoCard.vue'
 import BrowsePagination from '@/components/gallery/BrowsePagination.vue'
+import { t } from '@/i18n'
 import { useGalleryPlay } from '@/composables/useGalleryPlay'
 import { showVideoContextMenu } from '@/composables/useVideoContextActions'
 import { clearFavorites } from '@/api'
@@ -58,11 +59,11 @@ function onVideoContext(e: MouseEvent, videoId: string) {
 
 async function onClearFavorites() {
   if (!gallery.total) return
-  const ok = await ui.showConfirm(`确定清空全部 ${gallery.total} 个收藏？此操作不可撤销。`, '清空收藏')
+  const ok = await ui.showConfirm(t('fav.clearConfirm', { n: gallery.total }), t('fav.clearAll'))
   if (!ok) return
   await clearFavorites()
   await gallery.loadVideos()
-  ui.showToast('已清空收藏')
+  ui.showToast(t('fav.cleared'))
 }
 </script>
 
@@ -73,14 +74,14 @@ async function onClearFavorites() {
       <CategorySidebar v-if="settings.preset === 'youtube'" />
       <main class="flex flex-1 flex-col overflow-hidden p-4">
       <div class="mb-4 flex shrink-0 items-center gap-3">
-        <h2 class="text-lg font-medium">我的收藏</h2>
-        <span class="text-sm text-[var(--lg-text-muted)]">共 {{ gallery.total }} 个</span>
+        <h2 class="text-lg font-medium">{{ t('nav.favorites') }}</h2>
+        <span class="text-sm text-[var(--lg-text-muted)]">{{ t('page.count', { n: gallery.total }) }}</span>
         <button
           v-if="gallery.total > 0"
           class="ml-auto rounded border border-[var(--lg-border)] px-3 py-1 text-sm text-[var(--lg-text-secondary)] lg-hover"
           @click="onClearFavorites"
         >
-          清空收藏
+          {{ t('fav.clearAll') }}
         </button>
       </div>
       <div
@@ -88,8 +89,8 @@ async function onClearFavorites() {
         class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm text-[var(--lg-text-muted)]"
       >
         <span class="text-3xl opacity-60">♥</span>
-        <span>还没有收藏的视频</span>
-        <span>在浏览页点击卡片右上角的 ♥ 即可收藏</span>
+        <span>{{ t('fav.empty') }}</span>
+        <span>{{ t('fav.emptyHint') }}</span>
       </div>
       <div
         v-else

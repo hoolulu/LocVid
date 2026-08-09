@@ -8,6 +8,8 @@ import FolderTreeNode from './FolderTreeNode.vue'
 
 import { deleteFolder, renameFolder, reorderCategories, reorderFolders, setCategorySortMode } from '@/api/files'
 
+import { t } from '@/i18n'
+
 import { useGalleryStore } from '@/stores/gallery'
 import { useBrowseNavigation } from '@/composables/useBrowseNavigation'
 import { useUiStore } from '@/stores/ui'
@@ -46,19 +48,19 @@ watch(sidebarQuery, (q) => {
 
 
 
-const sortOptions = [
+const sortOptions = computed(() => [
 
-  { value: 'custom', label: '自定义' },
+  { value: 'custom', label: t('other.custom') },
 
-  { value: 'name_asc', label: '名称 A-Z' },
+  { value: 'name_asc', label: t('other.nameAsc') },
 
-  { value: 'name_desc', label: '名称 Z-A' },
+  { value: 'name_desc', label: t('other.nameDesc') },
 
-  { value: 'count_desc', label: '数量最多' },
+  { value: 'count_desc', label: t('other.countDesc') },
 
-  { value: 'count_asc', label: '数量最少' },
+  { value: 'count_asc', label: t('other.countAsc') },
 
-]
+])
 
 
 
@@ -122,10 +124,10 @@ function onFolderContext(e: MouseEvent, category: string, path: string) {
   ui.showContextMenu(
     e,
     [
-      { label: '打开', action: 'folder-open' },
-      { label: '重命名', action: 'folder-rename' },
-      { label: '移动到', action: 'folder-move' },
-      { label: '删除', action: 'folder-delete', danger: true },
+      { label: t('menu.open'), action: 'folder-open' },
+      { label: t('menu.rename'), action: 'folder-rename' },
+      { label: t('menu.move'), action: 'folder-move' },
+      { label: t('menu.delete'), action: 'folder-delete', danger: true },
     ],
     { targetType: 'folder', payload: { category, path, folderType: 'subdir' } },
   )
@@ -136,9 +138,9 @@ function onCategoryContext(e: MouseEvent, catName: string) {
   ui.showContextMenu(
     e,
     [
-      { label: '重命名', action: 'folder-rename' },
-      { label: '移动到', action: 'folder-move' },
-      { label: '删除', action: 'folder-delete', danger: true },
+      { label: t('menu.rename'), action: 'folder-rename' },
+      { label: t('menu.move'), action: 'folder-move' },
+      { label: t('menu.delete'), action: 'folder-delete', danger: true },
     ],
     { targetType: 'folder', payload: { category: catName, path: catName, folderType: 'cat' } },
   )
@@ -164,7 +166,7 @@ async function onContextAction(ev: Event) {
 
   } else if (detail.action === 'folder-rename') {
 
-    const newName = prompt('新文件夹名称', path.split('/').pop() || '')
+    const newName = prompt(t('folder.renamePrompt'), path.split('/').pop() || '')
 
     if (newName) {
 
@@ -178,7 +180,7 @@ async function onContextAction(ev: Event) {
 
       await gallery.loadVideos()
 
-      ui.showToast('已重命名')
+      ui.showToast(t('menu.renamed'))
 
     }
 
@@ -186,7 +188,7 @@ async function onContextAction(ev: Event) {
     ui.openFolderMove({ mode: 'folder', category, path, folderType })
   } else if (detail.action === 'folder-delete') {
 
-    const ok = await ui.showConfirm(`删除后文件夹内的视频会移入回收站，且无法在库中恢复。`, `确定删除文件夹「${path}」及其所有视频？`)
+    const ok = await ui.showConfirm(t('other.folderDeleteConfirm'), t('other.folderDeleteTitle', { path }))
     if (!ok) return
 
     await deleteFolder(category, path, folderType)
@@ -199,7 +201,7 @@ async function onContextAction(ev: Event) {
 
     await gallery.loadVideos()
 
-    ui.showToast('已删除')
+    ui.showToast(t('other.folderDeleted'))
 
   }
 
@@ -231,7 +233,7 @@ onUnmounted(() => {
 
     <div class="flex items-center justify-between border-b border-[var(--lg-border)] px-3 py-2">
 
-      <span class="text-sm font-medium">分类</span>
+      <span class="text-sm font-medium">{{ t('sidebar.title') }}</span>
 
       <select
 
@@ -257,7 +259,7 @@ onUnmounted(() => {
 
         type="search"
 
-        placeholder="过滤分类 / 文件夹…"
+        :placeholder="t('sidebar.filterPlaceholder')"
 
         class="w-full rounded border border-[var(--lg-border)] bg-transparent px-2 py-1 text-xs outline-none focus:border-[var(--lg-accent)]"
 
@@ -265,11 +267,12 @@ onUnmounted(() => {
 
     </div>
 
+      <!-- @vue-ignore -->
       <VueDraggable
         :list="gallery.categories"
         :handle="'.cat-drag-handle'"
         :disabled="gallery.categorySortMode !== 'custom' || !!sidebarQuery.trim()"
-        animation="150"
+        :animation="150"
         ghost-class="cat-drag-ghost"
         class="min-h-0 flex-1 overflow-y-auto p-2"
         data-testid="category-list"
@@ -285,7 +288,7 @@ onUnmounted(() => {
 
         >
 
-          <span>全部</span>
+          <span>{{ t('common.all') }}</span>
 
           <span class="text-xs text-[var(--lg-text-muted)]">{{ totalCount }}</span>
 
@@ -326,8 +329,14 @@ onUnmounted(() => {
               :class="{ 'rotate-90': gallery.expandedCategories.has(cat.name) }"
 
             >▶</span>
+            <span v-else class="w-3" />
 
-            <span v-if="gallery.categorySortMode === 'custom'" class="cat-drag-handle cursor-grab text-[var(--lg-text-muted)]">⋮⋮</span>
+            <span
+              v-if="!sidebarQuery.trim()"
+              class="px-0.5 text-[10px] text-[var(--lg-text-muted)]"
+              :class="{ 'cat-drag-handle cursor-grab': gallery.categorySortMode === 'custom' }"
+            >⠿</span>
+            <span v-else class="w-3" />
 
             <span class="truncate">{{ cat.name }}</span>
 
@@ -347,11 +356,12 @@ onUnmounted(() => {
 
         >
 
+          <!-- @vue-ignore -->
           <VueDraggable
             :list="folderTree(cat.name)"
             :handle="'.folder-drag-handle'"
             :disabled="!!sidebarQuery.trim()"
-            animation="150"
+            :animation="150"
             ghost-class="folder-drag-ghost"
             @end="onRootFolderDragEnd(cat.name, folderTree(cat.name))"
           >

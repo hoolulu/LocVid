@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { moveFolder, moveVideos } from '@/api/files'
+import { t } from '@/i18n'
 import { useGalleryStore } from '@/stores/gallery'
 import { useUiStore } from '@/stores/ui'
 
@@ -11,9 +12,9 @@ const selectedDest = ref('')
 
 const title = computed(() => {
   const p = ui.folderMovePayload
-  if (!p) return '移动'
-  if (p.mode === 'folder') return `移动文件夹「${p.path}」到：`
-  return `移动 ${p.videoIds?.length || 0} 个视频到分类：`
+  if (!p) return t('common.move')
+  if (p.mode === 'folder') return t('move.folderTitle', { path: p.path })
+  return t('move.videosTitle', { n: p.videoIds?.length || 0 })
 })
 
 const destinations = computed(() => {
@@ -22,7 +23,7 @@ const destinations = computed(() => {
   }
   const current = ui.folderMovePayload?.category || gallery.category || ''
   return [
-    { path: '', label: '库根目录' },
+    { path: '', label: t('move.rootDir') },
     ...gallery.categories.filter((c) => c.name !== current).map((c) => ({ path: c.name, label: c.name })),
   ]
 })
@@ -36,15 +37,15 @@ async function confirm() {
     await gallery.loadCategories()
     if (gallery.category) await gallery.loadFolderTree(gallery.category)
     await gallery.loadVideos()
-    ui.showToast('文件夹已移动')
+    ui.showToast(t('move.folderMoved'))
   } else if (p.mode === 'videos' && p.videoIds?.length) {
     if (!selectedDest.value) {
-      ui.showToast('请选择目标分类')
+      ui.showToast(t('move.selectDest'))
       return
     }
     await moveVideos(p.videoIds, selectedDest.value)
     await gallery.loadVideos()
-    ui.showToast('视频已移动')
+    ui.showToast(t('move.videosMoved'))
   }
   ui.closeFolderMove()
 }
@@ -76,8 +77,8 @@ function close() {
       </button>
     </div>
     <div class="flex justify-end gap-2 border-t border-[var(--lg-border)] px-4 py-3">
-      <button class="rounded border border-[var(--lg-border)] px-4 py-2 text-sm" @click="close">取消</button>
-      <button class="rounded bg-[var(--lg-accent)] px-4 py-2 text-sm text-[var(--lg-text-on-accent)]" @click="confirm">确定</button>
+      <button class="rounded border border-[var(--lg-border)] px-4 py-2 text-sm" @click="close">{{ t('common.cancel') }}</button>
+      <button class="rounded bg-[var(--lg-accent)] px-4 py-2 text-sm text-[var(--lg-text-on-accent)]" @click="confirm">{{ t('common.confirm') }}</button>
     </div>
   </dialog>
 </template>

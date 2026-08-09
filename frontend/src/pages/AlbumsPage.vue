@@ -6,6 +6,8 @@ import { useRouter } from 'vue-router'
 
 import AppHeader from '@/components/layout/AppHeader.vue'
 
+import { t } from '@/i18n'
+
 import { thumbUrl } from '@/api/client'
 
 import { useAlbumStore } from '@/stores/album'
@@ -139,13 +141,13 @@ function onAlbumContext(e: MouseEvent, a: { id: string; name: string }) {
 
     [
 
-      { label: '打开', action: 'open' },
+    { label: t('menu.open'), action: 'open' },
 
-      { label: '编辑', action: 'edit' },
+    { label: t('album.edit'), action: 'edit' },
 
-      { label: '播放全部', action: 'play-all' },
+    { label: t('album.playAll'), action: 'play-all' },
 
-      { label: '删除', action: 'delete', danger: true },
+    { label: t('menu.delete'), action: 'delete', danger: true },
 
     ],
 
@@ -198,7 +200,7 @@ async function onContextAction(ev: Event) {
     await onPlay(data.items[0].id, data.items)
 
   } else if (detail.action === 'delete') {
-    const ok = await ui.showConfirm(`确定删除专辑「${id}」？专辑内视频文件不会被删除。`, '删除专辑')
+    const ok = await ui.showConfirm(t('album.deleteConfirmFull', { name: id }), t('album.delete'))
     if (ok) await album.removeAlbum(id)
   }
 
@@ -220,7 +222,7 @@ async function onContextAction(ev: Event) {
 
       <div class="mb-4 flex items-center justify-between">
 
-        <h2 class="text-lg font-medium">我的专辑</h2>
+        <h2 class="text-lg font-medium">{{ t('album.title') }}</h2>
 
         <button
 
@@ -230,7 +232,7 @@ async function onContextAction(ev: Event) {
 
         >
 
-          新建专辑
+          {{ t('album.create') }}
 
         </button>
 
@@ -240,19 +242,19 @@ async function onContextAction(ev: Event) {
 
       <div v-if="showForm" class="mb-4 rounded border border-[var(--lg-border)] p-4">
 
-        <input v-model="formName" placeholder="专辑名称" class="mb-2 w-full rounded border border-[var(--lg-border)] bg-transparent px-3 py-2 text-sm" />
+        <input v-model="formName" :placeholder="t('album.namePlaceholder')" class="mb-2 w-full rounded border border-[var(--lg-border)] bg-transparent px-3 py-2 text-sm" />
 
-        <textarea v-model="formDesc" placeholder="描述（可选）" class="mb-2 w-full rounded border border-[var(--lg-border)] bg-transparent px-3 py-2 text-sm" rows="2" />
+        <textarea v-model="formDesc" :placeholder="t('album.descPlaceholder')" class="mb-2 w-full rounded border border-[var(--lg-border)] bg-transparent px-3 py-2 text-sm" rows="2" />
 
         <div class="flex gap-2">
 
           <button class="rounded bg-[var(--lg-accent)] px-3 py-1 text-sm text-[var(--lg-text-on-accent)]" @click="saveForm">
 
-            {{ editingId ? '保存' : '创建' }}
+            {{ editingId ? t('common.save') : t('album.createBtn') }}
 
           </button>
 
-          <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="showForm = false">取消</button>
+          <button class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm" @click="showForm = false">{{ t('common.cancel') }}</button>
 
         </div>
 
@@ -262,8 +264,8 @@ async function onContextAction(ev: Event) {
 
       <div v-if="!album.albums.length" class="flex flex-col items-center justify-center gap-2 py-20 text-sm text-[var(--lg-text-muted)]">
         <span class="text-3xl opacity-60">▣</span>
-        <span>还没有专辑</span>
-        <span>点击右上角「新建专辑」，在视频上右键选择「加入专辑」</span>
+  <span>{{ t('album.emptyPage') }}</span>
+  <span>{{ t('album.emptyPageHint') }}</span>
       </div>
 
       <div class="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
@@ -300,7 +302,7 @@ async function onContextAction(ev: Event) {
 
             <h3 class="truncate text-sm font-medium">{{ a.name }}</h3>
 
-            <p class="text-xs text-[var(--lg-text-muted)]">{{ a.video_count }} 个视频</p>
+            <p class="text-xs text-[var(--lg-text-muted)]">{{ t('album.videoCount', { n: a.video_count || 0 }) }}</p>
 
           </div>
 

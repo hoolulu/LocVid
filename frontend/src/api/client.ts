@@ -7,6 +7,8 @@ export class ApiError extends Error {
   }
 }
 
+import { locale } from '@/i18n'
+
 type ApiOptions = RequestInit & {
   params?: Record<string, string | number | boolean | undefined | null>
   libraryId?: string | null
@@ -37,6 +39,10 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const headers = new Headers(options.headers)
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
+  }
+  // 后端错误 detail 按当前界面语言返回（i18n）
+  if (!headers.has('Accept-Language')) {
+    headers.set('Accept-Language', locale.value === 'zh' ? 'zh-CN' : 'en-US')
   }
 
   const res = await fetch(url, { ...options, headers })

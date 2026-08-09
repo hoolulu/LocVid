@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { thumbUrl } from '@/api/client'
+import { t } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { usePathTip } from '@/composables/usePathTip'
 import { useHoverPreview } from '@/composables/useHoverPreview'
@@ -89,10 +90,10 @@ function formatTs(ts?: number) {
   const now = new Date()
   const hh = pad(d.getHours())
   const mm = pad(d.getMinutes())
-  if (d.toDateString() === now.toDateString()) return `今天 ${hh}:${mm}`
+  if (d.toDateString() === now.toDateString()) return t('tip.today', { time: `${hh}:${mm}` })
   const yesterday = new Date(now)
   yesterday.setDate(now.getDate() - 1)
-  if (d.toDateString() === yesterday.toDateString()) return `昨天 ${hh}:${mm}`
+  if (d.toDateString() === yesterday.toDateString()) return t('tip.yesterday', { time: `${hh}:${mm}` })
   const y = d.getFullYear()
   const m = pad(d.getMonth() + 1)
   const day = pad(d.getDate())
@@ -114,10 +115,10 @@ const techChips = computed(() => {
   if (!v) return []
   const chips: string[] = []
   const dur = formatDuration(v.durationSec)
-  if (dur) chips.push(`时长 ${dur}`)
+  if (dur) chips.push(t('tip.duration', { dur }))
   if (v.formatBadge) chips.push(formatBadgeLabel(v.formatBadge))
   if (v.size) chips.push(formatSize(v.size))
-  if (v.mtime) chips.push(`修改于 ${formatTs(v.mtime)}`)
+  if (v.mtime) chips.push(t('tip.modified', { ts: formatTs(v.mtime) }))
   return chips
 })
 
@@ -125,11 +126,11 @@ const userChips = computed(() => {
   const v = item.value
   if (!v) return []
   const chips: string[] = []
-  if (v.favorited && v.favoritedAt) chips.push(`收藏于 ${formatTs(v.favoritedAt)}`)
-  else if (v.favorited) chips.push('已收藏')
+  if (v.favorited && v.favoritedAt) chips.push(t('tip.favoritedAt', { ts: formatTs(v.favoritedAt) }))
+  else if (v.favorited) chips.push(t('tip.favorited'))
   if (v.playedAt) {
     const n = v.playCount || 1
-    chips.push(`最近播放 ${formatTs(v.playedAt)} · 累计 ${n} 次`)
+    chips.push(t('tip.lastPlayed', { ts: formatTs(v.playedAt), n }))
   }
   return chips
 })
@@ -174,7 +175,7 @@ watch(previewRatio, () => {
     <button
       v-if="pinned"
       class="path-tip-close"
-      title="关闭预览"
+      title="{{ t('tip.closePreview') }}"
       @click="onCloseTip"
     >
       ✕
@@ -201,7 +202,7 @@ watch(previewRatio, () => {
           decoding="async"
           @load="onImgLoad"
         />
-        <div v-else class="path-tip-preview--empty">暂无缩略图</div>
+        <div v-else class="path-tip-preview--empty">{{ t('thumb.emptyHint') }}</div>
       </template>
       <!-- 预览已确认失败（error / seek 超时）：回退缩略图，避免预览区一片空白 -->
       <template v-else-if="previewFailed">
@@ -212,13 +213,13 @@ watch(previewRatio, () => {
           decoding="async"
           @load="onImgLoad"
         />
-        <div v-else class="path-tip-preview--empty">预览不可用</div>
-        <div class="path-tip-preview--fallback">预览失败，点击可直接播放</div>
+        <div v-else class="path-tip-preview--empty">{{ t('thumb.previewUnavailable') }}</div>
+        <div class="path-tip-preview--fallback">{{ t('thumb.previewFailed') }}</div>
       </template>
       <!-- 后端已判定可播放但不支持悬停预览（伪装TS/MKV/HEVC 等，原生 <video> 解不了）：
            直接提示，不再尝试预览 -->
       <div v-else-if="item.previewable === false" class="path-tip-preview--unsupported">
-        此视频可播放，但不支持悬停预览
+        {{ t('thumb.previewUnsupported') }}
       </div>
       <span v-if="item.formatBadge" class="thumb-format-badge">{{ formatBadgeLabel(item.formatBadge) }}</span>
       <span v-if="item.durationSec" class="thumb-duration">{{ formatDuration(item.durationSec) }}</span>

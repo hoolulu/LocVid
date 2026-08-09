@@ -21,9 +21,10 @@ import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { usePlayerStore } from '@/stores/player'
 import { scanFormat } from '@/api/thumbs'
-import { FORMAT_FILTER_OPTIONS, type SortMode } from '@/types'
-import { GALLERY_SORT_OPTIONS } from '@/constants/sort'
+import type { SortMode } from '@/types'
+import { getGallerySortOptions } from '@/constants/sort'
 import { GRID_COLUMNS } from '@/constants/layout'
+import { t } from '@/i18n'
 
 
 
@@ -41,7 +42,11 @@ const { onPlay, onToggleFavorite, onRandomPlay } = useGalleryPlay()
 const { syncUrl, applyRouteQuery, selectCategory } = useBrowseNavigation()
 
 const customPageSize = ref('')
-const sortOptions = GALLERY_SORT_OPTIONS
+const sortOptions = computed(() => getGallerySortOptions())
+const formatFilterOptions = computed(() => [
+  { value: '', label: t('other.allFormats') },
+  { value: 'unsupported', label: t('other.noPlayable') },
+])
 const skeletonCount = computed(() => Math.min(gallery.pageSize, 24))
 const skeletonColumns = computed(() => GRID_COLUMNS[settings.preset])
 const skeletonStyle = computed(() => ({
@@ -275,8 +280,8 @@ function onVideoContext(e: MouseEvent, videoId: string) {
         </div>
 
         <div class="mb-4 flex shrink-0 flex-wrap items-center gap-3">
-          <h2 class="text-lg font-medium">{{ gallery.category || '全部' }}</h2>
-          <span class="text-sm text-[var(--lg-text-muted)]">共 {{ gallery.total }} 个</span>
+          <h2 class="text-lg font-medium">{{ gallery.category || t('common.all') }}</h2>
+          <span class="text-sm text-[var(--lg-text-muted)]">{{ t('page.count', { n: gallery.total }) }}</span>
 
           <select
             v-if="settings.preset === 'netflix'"
@@ -284,7 +289,7 @@ function onVideoContext(e: MouseEvent, videoId: string) {
             :value="gallery.category || ''"
             @change="onNetflixCategoryChange"
           >
-            <option value="">全部分类</option>
+            <option value="">{{ t('browse.allCategories') }}</option>
             <option v-for="cat in gallery.categories" :key="cat.name" :value="cat.name">
               {{ cat.name }} ({{ cat.count }})
             </option>
@@ -300,7 +305,7 @@ function onVideoContext(e: MouseEvent, videoId: string) {
 
           >
 
-            <option v-for="opt in FORMAT_FILTER_OPTIONS" :key="opt.value" :value="opt.value">
+            <option v-for="opt in formatFilterOptions" :key="opt.value" :value="opt.value">
 
               {{ opt.label }}
 
@@ -334,7 +339,7 @@ function onVideoContext(e: MouseEvent, videoId: string) {
 
           >
 
-            随机播放
+            {{ t('page.randomPlay') }}
 
           </button>
 

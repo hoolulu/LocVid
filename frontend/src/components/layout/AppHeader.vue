@@ -9,6 +9,7 @@ import { useAlbumStore } from '@/stores/album'
 import { rescan, getSearchSuggest } from '@/api'
 import HeaderProgressChips from '@/components/layout/HeaderProgressChips.vue'
 import HeaderProgressBar from '@/components/layout/HeaderProgressBar.vue'
+import { t } from '@/i18n'
 
 const route = useRoute()
 const gallery = useGalleryStore()
@@ -17,18 +18,18 @@ const settings = useSettingsStore()
 const ui = useUiStore()
 const album = useAlbumStore()
 
-const navItems = [
-  { name: 'browse', label: '首页', to: '/' },
-  { name: 'favorites', label: '我的收藏', to: '/favorites' },
-  { name: 'history', label: '最近播放', to: '/history' },
-  { name: 'most-played', label: '最多播放', to: '/most-played' },
-  { name: 'albums', label: '我的专辑', to: '/albums' },
-]
+const navItems = computed(() => [
+  { name: 'browse', label: t('nav.home'), to: '/' },
+  { name: 'favorites', label: t('nav.favorites'), to: '/favorites' },
+  { name: 'history', label: t('nav.history'), to: '/history' },
+  { name: 'most-played', label: t('nav.mostPlayed'), to: '/most-played' },
+  { name: 'albums', label: t('nav.albums'), to: '/albums' },
+])
 
-const presetOptions: { value: ThemePreset; label: string }[] = [
-  { value: 'netflix', label: '影院' },
-  { value: 'youtube', label: '经典' },
-]
+const presetOptions = computed<{ value: ThemePreset; label: string }[]>(() => [
+  { value: 'netflix', label: t('toast.theme.cinema') },
+  { value: 'youtube', label: t('toast.theme.classic') },
+])
 
 const activeNav = computed(() => route.name)
 
@@ -130,20 +131,20 @@ async function onRescan() {
   await rescan()
   await gallery.loadCategories()
   await gallery.loadVideos()
-  ui.showToast('扫描完成')
+  ui.showToast(t('search.done'))
 }
 
 async function onPresetChange(p: ThemePreset) {
   await settings.setPreset(p)
-  const label = presetOptions.find((o) => o.value === p)?.label ?? p
-  ui.showToast(`已切换为 ${label} 主题`)
+  const label = presetOptions.value.find((o) => o.value === p)?.label ?? p
+  ui.showToast(t('toast.themeSwitched', { name: label }))
 }
 </script>
 
 <template>
   <header class="app-header shrink-0 border-b border-[var(--lg-border)] bg-[var(--lg-bg-header)]">
     <div class="app-header-main">
-      <nav class="app-header-nav" aria-label="主视图">
+      <nav class="app-header-nav" :aria-label="t('nav.mainView')">
         <h1 class="app-header-logo">
           <svg class="app-header-logo-icon" viewBox="0 0 24 24" aria-hidden="true">
             <rect
@@ -158,7 +159,9 @@ async function onPresetChange(p: ThemePreset) {
             />
             <path d="M10 9l6 3-6 3z" fill="currentColor" />
           </svg>
-          <span class="text-[var(--lg-accent)]">Loc</span> Gallery
+          <span class="app-header-logo-text">
+            <span class="text-[var(--lg-accent)]">Loc</span>Vid
+          </span>
         </h1>
         <router-link
           v-for="item in navItems"
@@ -170,7 +173,7 @@ async function onPresetChange(p: ThemePreset) {
           {{ item.label }}
         </router-link>
         <div class="app-header-library">
-          <span class="text-xs text-[var(--lg-text-muted)]">视频库</span>
+          <span class="text-xs text-[var(--lg-text-muted)]">{{ t('nav.library') }}</span>
           <select
             class="rounded border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-2 py-1 text-sm"
             :value="library.activeLibraryId || ''"
@@ -184,7 +187,7 @@ async function onPresetChange(p: ThemePreset) {
       </nav>
 
       <div class="app-header-right">
-        <div class="flex overflow-hidden rounded border border-[var(--lg-border)] text-xs" title="界面主题">
+        <div class="flex overflow-hidden rounded border border-[var(--lg-border)] text-xs" :title="t('settings.theme')">
           <button
             v-for="p in presetOptions"
             :key="p.value"
@@ -203,7 +206,7 @@ async function onPresetChange(p: ThemePreset) {
           <input
             data-testid="search-input"
             type="search"
-            placeholder="搜索"
+            :placeholder="t('search.placeholder')"
             class="app-header-search rounded border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-3 py-1.5 text-sm"
             :value="gallery.query"
             @input="onSearchInput"
@@ -226,12 +229,12 @@ async function onPresetChange(p: ThemePreset) {
                 {{ s }}
               </button>
               <div v-if="!searchSuggest.length" class="px-3 py-1.5 text-[var(--lg-text-muted)]">
-                无匹配建议
+                {{ t('search.noSuggest') }}
               </div>
             </template>
             <template v-else>
               <div v-if="searchHistory.length" class="px-3 pb-1 pt-1 text-xs text-[var(--lg-text-muted)]">
-                搜索历史
+                {{ t('search.history') }}
               </div>
               <button
                 v-for="h in searchHistory"
@@ -243,7 +246,7 @@ async function onPresetChange(p: ThemePreset) {
                 {{ h }}
               </button>
               <div v-if="!searchHistory.length" class="px-3 py-1.5 text-[var(--lg-text-muted)]">
-                输入关键字搜索标题 / 文件名 / 分类 / 路径
+                {{ t('search.hint') }}
               </div>
             </template>
           </div>
@@ -253,24 +256,24 @@ async function onPresetChange(p: ThemePreset) {
           :class="ui.manageMode ? 'border-[var(--lg-accent)] text-[var(--lg-accent)]' : 'border-[var(--lg-border)]'"
           @click="ui.manageMode = !ui.manageMode; if (!ui.manageMode) ui.clearSelection()"
         >
-          批量
+          {{ t('batch.manage') }}
         </button>
         <button
           class="rounded border border-[var(--lg-border)] px-3 py-1.5 text-sm lg-hover"
-          :title="settings.theme === 'dark' ? '切换亮色' : '切换暗色'"
+          :title="settings.theme === 'dark' ? t('theme.toggleLight') : t('theme.toggleDark')"
           @click="settings.toggleTheme()"
         >
           {{ settings.theme === 'dark' ? '☾' : '☀' }}
         </button>
         <button class="rounded border border-[var(--lg-border)] px-3 py-1.5 text-sm lg-hover" @click="ui.settingsOpen = true">
-          设置
+          {{ t('settings.title') }}
         </button>
         <HeaderProgressChips />
         <button
           class="rounded border border-[var(--lg-accent)] px-3 py-1.5 text-sm text-[var(--lg-accent)] hover:bg-[var(--lg-accent-muted)]"
           @click="onRescan"
         >
-          刷新
+          {{ t('common.refresh') }}
         </button>
       </div>
     </div>
