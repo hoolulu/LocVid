@@ -854,10 +854,10 @@ def get_thumb_path(item: VideoItem) -> Path | None:
     return p if p.exists() else None
 
 
-def _notify_progress() -> None:
+def _notify_progress(force: bool = False) -> None:
     global _last_notify
     now = time.time()
-    if now - _last_notify < 1.0:
+    if not force and now - _last_notify < 1.0:
         return
     _last_notify = now
     _rebuild_status_cache()
@@ -1906,7 +1906,10 @@ def _process_one(library_id: str, video_id: str) -> None:
         with _lock:
             _generating.discard(tkey)
             _generating_started.pop(tkey, None)
-        _notify_progress()
+            # 全部任务完成（队列空+无生成中）：强制广播绕过 1s 节流，
+            # 否则最后一次完成的广播被节流跳过 → 前端进度条永远卡在忙碌（用户反馈）
+            all_done = not _queue and not _generating
+        _notify_progress(force=all_done)
 
 
 def _kick_orphan_queued() -> None:
