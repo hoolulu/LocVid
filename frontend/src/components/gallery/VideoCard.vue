@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { thumbUrl } from '@/api/client'
 import { usePathTip } from '@/composables/usePathTip'
 import { useHoverPreview } from '@/composables/useHoverPreview'
@@ -28,6 +28,20 @@ const gallery = useGalleryStore()
 const settings = useSettingsStore()
 const { scheduleShow, onAnchorLeave, pinned, hide } = usePathTip()
 const { startPreview, stopPreview, stopPreviewNow } = useHoverPreview()
+
+// 缩略图加载失败自动重试一次（切库/并发高峰期偶发失败/404 → 避免卡片永久空白）
+const thumbRetry = ref<Record<string, number>>({})
+function onThumbError(e: Event) {
+  const img = e.target as HTMLImageElement
+  const vid = img.dataset.vid
+  if (!vid) return
+  const n = thumbRetry.value[vid] || 0
+  if (n >= 1) return // 只重试一次
+  thumbRetry.value[vid] = n + 1
+  const src = img.getAttribute('src') || ''
+  // 加时间戳参数强制绕过浏览器错误缓存，重新发起请求
+  img.src = src + (src.includes('?') ? '&' : '?') + 'retry=' + Date.now()
+}
 
 const isSelected = computed(() => ui.selectedIds.has(props.video.id))
 const albumCount = computed(() => props.video.albumIds?.length || 0)
@@ -112,12 +126,16 @@ function onCheckChange(e: Event) {
         if (settings.settings?.html5_hover_tip_pin === false) stopPreview()
       }"
     >
+      <!-- 不用 loading="lazy"：虚拟网格（VirtualVideoGrid）已只渲染视口附近的行，
+           首屏 img 本应立即可见；lazy 判定基于 img 视口位置，切库/滚动瞬间 topPad 高度
+           变化中会被误判"视口外"而推迟/不加载 → 大量缩略图空白（偶发，刷新才好） -->
       <img
         v-if="video.thumbReady"
         :src="thumbUrl(video.id, video.thumbVersion)"
         :alt="video.title"
+        :data-vid="video.id"
         class="h-full w-full object-cover"
-        loading="lazy"
+        @error="onThumbError"
       />
       <div
         v-else
