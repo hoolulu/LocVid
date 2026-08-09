@@ -13,7 +13,7 @@ import {
   updateLibrary,
 } from '@/api/files'
 import { exportData, importData } from '@/api'
-import { cleanupOrphans, getThumbStats, regenerateFailed } from '@/api/thumbs'
+import { cleanupOrphans, getThumbStats } from '@/api/thumbs'
 import { getGallerySortOptions } from '@/constants/sort'
 import { t, useI18n, type Locale } from '@/i18n'
 import type { Settings } from '@/types'
@@ -69,13 +69,6 @@ async function onCleanupThumbs() {
   const res = await cleanupOrphans()
   ui.showToast(t('thumb.cleaned', { n: res.removed }))
   await loadThumbStats()
-}
-
-async function onRegenerateFailed() {
-  const ok = await ui.showConfirm(t('settings.regenFailedMsg'), t('thumb.regenFailed'))
-  if (!ok) return
-  const res = (await regenerateFailed()) as { regenerated?: number }
-  ui.showToast(t('settings.regenDone', { n: res.regenerated ?? 0 }))
 }
 
 const presets = computed(() => [
@@ -561,7 +554,6 @@ watch(tab, (t) => {
                     {{ t('settings.cacheUsage', { text: thumbStats ? `${formatThumbBytes(thumbStats.bytes)}（${thumbStats.files} ${t('thumb.files')}）` : '…' }) }}
                   </span>
                   <button type="button" class="settings-btn" @click="onCleanupThumbs">{{ t('settings.cleanupBtn') }}</button>
-                  <button type="button" class="settings-btn" @click="onRegenerateFailed">{{ t('settings.regenFailedBtn') }}</button>
                 </div>
               </section>
             </template>
