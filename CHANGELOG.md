@@ -2,6 +2,32 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [14.5.0] - 2026-08-10
+
+### Fixed (English)
+
+This release is a systematic bug-hunting pass across the whole codebase (30 fixes, all verified by behavior tests and full audits).
+
+- **Restart API completely broken** (P0): `service_ctl` resolved the project root to `backend/` instead of the repo root, so the "restart service" button always threw `FileNotFoundError`. Now resolved correctly.
+- **Normal videos permanently filtered out of the library** (P1): the "downloading" detection matched `.part`/`.download`/`.temp` as substrings anywhere in the filename — `The.Party.mp4`, `Video.Downloads.mp4`, `Movie.Template.mkv` were all wrongly treated as incomplete. Now matches only the file extension suffix.
+- **Event loop frozen on rescan** (P1): `/api/rescan` ran the full library scan synchronously inside the async handler, blocking every API/SSE/stream request. Moved to a thread pool; the background rescan thread now also sets the library context so thumbnail/scan bookkeeping hits the right library.
+- **Player double audio/video track** (P1): quickly switching videos left an orphan `<movi-player>` element (with autoplay+src) that would start playing once ready. Destroy now clears all host children.
+- **Remux deadlock forever** (P1): a hung ffmpeg blocked all remuxing with no timeout (global single-flight). Added stall timeout (no output growth for 180s) plus an absolute 3600s cap.
+- **User data lost after move/rename** (P1): moving a freshly-downloaded file (mtime < 20s) was skipped by the stability check, leaving `new_id` unknown, then watchdog prune deleted the just-migrated favorites/history/albums. Move now upserts the new path like rename does.
+- **Plus 23 more** (P2): cross-library thumbnail queue wipe on HIGH scheduling; malformed Range header (`bytes=abc`) crashing the stream endpoint; 0-byte files hanging clients on `Content-Length: 1`; SSE cross-thread broadcasting and unbounded queue; deleting a library leaving thumbnail/scan residue; search term leaking across library switch; favorites refresh jumping to top of the grid; hover tooltip/preview leaking across route changes; playlist sort race overwriting the list; ended-callback skipping two episodes; rename of the playing video breaking prev/next; non-atomic settings writes; path traversal in folder rename/move; thumbnail state counters always zero; capture error attribution across workers; import not validating entry types; auto-remux blacklisting transient busy state; and more.
+
+### 修复（中文）
+
+本版本是一次全代码库的系统性挖 bug（30 项修复，均经过行为用例与完整审计）。
+
+- **服务重启 API 完全失效**（P0）：`service_ctl` 项目根路径解析错误导致"重启服务"永远 `FileNotFoundError`，已修正。
+- **正常视频被永久过滤不入库**（P1）：下载中检测把 `.part`/`.download`/`.temp` 当文件名任意位置子串匹配——`The.Party.mp4`、`Video.Downloads.mp4`、`Movie.Template.mkv` 全被误判为下载中；已改为仅匹配扩展名后缀。
+- **重新扫描冻结整个服务**（P1）：`/api/rescan` 在 async 处理器里同步跑全库扫描，期间所有 API/SSE/流请求卡死；已移入线程池，后台扫描线程也补了库上下文（多库下缩略图/扫描记账作用正确）。
+- **播放器双音轨/双解码**（P1）：快速切换视频会残留带 autoplay+src 的孤儿 `<movi-player>` 元素，就绪后自动播放；销毁逻辑现会清空宿主全部子元素。
+- **重封装永久卡死**（P1）：ffmpeg 挂死时无超时（全局单并行）阻塞全部修复；新增输出无增长 180s + 绝对 3600s 超时终止。
+- **移动/改名后收藏历史丢失**（P1）：刚下载完（mtime<20s）就移动的文件被稳定检测跳过，`new_id` 未知后 watchdog prune 把刚迁移的收藏/历史/专辑删掉；移动现与改名一致补 upsert 兜底。
+- **其余 23 项**（P2）：HIGH 调度跨库清空缩略图任务、畸形 Range 头（`bytes=abc`）致流接口 500、0 字节文件 `Content-Length:1` 挂起客户端、SSE 跨线程广播与队列无界、删除库后缩略图/扫描残留、切库残留搜索词、收藏刷新跳回网格顶部、悬停浮层/预览跨路由残留、播放列表排序竞态覆盖、播完连跳两集、重命名播放中视频致上一首/下一首失效、设置非原子写、文件夹重命名/移动路径穿越、缩略图状态统计恒为 0、多 worker 截帧错误串扰、导入不校验条目类型、自动重封装把瞬时占用写进永久黑名单 等。
+
 ## [14.0.1] - 2026-08-09
 
 ### Added (English)
