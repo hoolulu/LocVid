@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { GRID_COLUMNS } from '@/constants/layout'
 import { useSettingsStore } from '@/stores/settings'
 import VideoCard from './VideoCard.vue'
@@ -54,11 +54,28 @@ onMounted(() => {
 
 const visibleRange = computed(() => {
   if (!useVirtual.value) return { start: 0, end: rows.value.length }
-  const start = Math.max(0, Math.floor(scrollTop.value / rowHeight.value) - 2)
+  const total = rows.value.length
+  if (total === 0) return { start: 0, end: 0 }
+  // 边界保护：scrollTop 残留超过总行数时（切库/切分类后小库行数变少），
+  // clamp 到最后一行而非越界空切片（rows.slice(start>total) 会渲染空白网格）
+  const rawStart = Math.max(0, Math.floor(scrollTop.value / rowHeight.value) - 2)
+  const start = rawStart >= total ? Math.max(0, total - 1) : rawStart
   const visible = Math.ceil(viewportHeight.value / rowHeight.value) + 4
-  const end = Math.min(rows.value.length, start + visible)
+  const end = Math.min(total, start + visible)
   return { start, end }
 })
+
+// 列表切换（切库/切分类/翻页/搜索）时重置滚动到顶部：
+// 否则残留 scrollTop 会让虚拟窗口落在新列表的错误位置（小库时甚至越界空白），
+// 且新库从中间开始浏览不符合"切换后回到列表开头"的预期
+watch(
+  () => props.videos,
+  () => {
+    scrollTop.value = 0
+    const el = containerRef.value
+    if (el && el.scrollTop !== 0) el.scrollTop = 0
+  },
+)
 
 const visibleRows = computed(() => rows.value.slice(visibleRange.value.start, visibleRange.value.end))
 
