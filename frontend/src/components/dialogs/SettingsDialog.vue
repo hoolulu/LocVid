@@ -10,7 +10,6 @@ import {
   createLibrary,
   deleteLibrary,
   pickFolder,
-  restartService,
   updateLibrary,
 } from '@/api/files'
 import { exportData, importData } from '@/api'
@@ -168,27 +167,6 @@ async function onRemoveLibrary(id: string, alias: string) {
   await gallery.loadVideos()
   await album.loadAlbums()
   ui.showToast(t('settings.library.deleted'))
-}
-
-async function onRestart() {
-  const ok = await ui.showConfirm(t('settings.restartConfirm'))
-  if (!ok) return
-  const before = await fetch('/api/health').then((r) => r.json()).catch(() => null)
-  await restartService()
-  ui.showToast(t('settings.restarting'))
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 500))
-    try {
-      const after = await fetch('/api/health').then((r) => r.json())
-      if (after?.ok && after.boot_id !== before?.boot_id) {
-        ui.showToast(t('settings.restarted'))
-        return
-      }
-    } catch {
-      /* wait */
-    }
-  }
-  ui.showToast(t('settings.restartQueued'))
 }
 
 async function onClearHistory() {
@@ -672,7 +650,6 @@ watch(tab, (t) => {
                 <h3 class="settings-block-title">{{ t('settings.maintenance') }}</h3>
                 <div class="flex flex-wrap items-center gap-3">
                   <button type="button" class="settings-btn" @click="onClearHistory">{{ t('settings.clearHistoryBtn') }}</button>
-                  <button type="button" class="settings-btn" @click="onRestart">{{ t('settings.restartBtn') }}</button>
                   <span class="settings-field-hint">{{ t('settings.thumbWorkersHint') }}</span>
                 </div>
               </section>
