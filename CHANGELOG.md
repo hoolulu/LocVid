@@ -2,6 +2,40 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [15.0.0] - 2026-08-10
+
+### Added (English)
+
+- **Ingestion pipeline task bar**: new videos are now processed strictly in sequence — repair (remux) → thumbnail generation → duration probe. A single-line task bar shows the current stage badge, stage text, progress bar and a real-time summary (video count + thumbnails ready). Incoming videos trigger a "New videos detected, processing…" flash; when all background tasks finish, a "✓ All tasks completed" flash is shown. A repaired video is no longer re-processed for thumbnails/durations.
+- **Global remux status endpoint**: `GET /api/remux/status` exposes repair queue state (active / running / queued / done_total / failed_keys) for the task bar.
+
+### Fixed (English)
+
+- **Thumbnail cache usage not displayed** (P1): `/api/thumb/stats` was shadowed by the `/api/thumb/{video_id}` route (defined later matched first), so the settings page always showed "…" — the stats route is now registered before the wildcard.
+- **Orphan thumbnail cleanup reported 0**: `cleanup_orphans` only scanned index entries (≈0); on-disk orphan `*.jpg` files (leftover candidate frames / deleted videos) were never removed. Now scans the disk directory. (G电影 library: 30 real orphans cleaned.)
+- **Cache usage count off by one**: stats counted `index.json` as a file (137 vs 106 videos) — now counts only `*.jpg` thumbnails.
+- **Thumbnail progress bar never disappeared after completion** (P1): the last "done" broadcast was swallowed by the 1s throttle in `_notify_progress`, so the frontend stayed busy forever — a forced broadcast fires when the queue drains.
+- **Switching libraries showed blank thumbnails** (P1): `loading="lazy"` conflicted with the virtual grid (new rows misjudged as off-screen during scroll-reset) — removed lazy loading and added one auto-retry on image error.
+- **All thumbnails flickered once after switching library**: stale videos from the old library stayed until the new data replaced them — the list is now cleared immediately (skeleton takes over).
+- **Thumbnails refreshed a second time after switching library**: the SSE reconnect handshake pushed a version that triggered a duplicate `loadVideos` — a suppress window prevents the second load during library switch.
+- **Empty / dangling states in the task bar**: clicking the top-right thumbnail chip while idle showed a blank bar — an idle detail branch now shows the full thumbnail summary; clicking the chip while any task is active collapses/restores the bar (repair included).
+
+### 新增（中文）
+
+- **入库处理管道任务条**：新影片入库后按「修复 → 缩略图 → 时长」严格串行处理。单行任务条显示当前阶段徽标、阶段文本、进度条与实时总况（影片数 + 缩略图就绪数）。新影片入库时顶部闪示「检测到新影片，开始处理…」；全部后台任务完成时闪示「✓ 全部处理完成」。修复过的视频不再重复生成缩略图/时长。
+- **全局修复状态接口**：`GET /api/remux/status` 暴露修复队列状态（active / running / queued / done_total / failed_keys），供任务条展示。
+
+### 修复（中文）
+
+- **缩略图缓存占用不显示**（P1）：`/api/thumb/stats` 被 `/api/thumb/{video_id}` 通配路由抢先匹配，设置页一直显示"…"——stats 路由已移至通配路由之前。
+- **清理孤立缩略图报 0 个**：`cleanup_orphans` 只扫索引条目（≈0），磁盘上残留的孤儿 `*.jpg`（候选帧/已删视频残留）从未被清理——现补磁盘目录扫描（G电影 实测清掉 30 个真实孤儿）。
+- **缓存占用计数多 1**：stats 把 `index.json` 也算作文件（137 vs 106 视频）——现只统计 `*.jpg` 缩略图。
+- **缩略图进度条完成后不消失**（P1）：`_notify_progress` 的 1s 节流吞掉最后一次"完成"广播，前端永远停留在忙碌——队列清空时强制广播。
+- **切库后大量缩略图空白**（P1）：`loading="lazy"` 与虚拟网格冲突（滚动重置瞬间新行被误判视口外）——移除 lazy，图片加载失败自动重试一次。
+- **切库后所有图片闪烁一次**：旧库视频残留到新数据到达才整体替换——切库瞬间清空列表（骨架屏接管）。
+- **切库后图片二次刷新**：SSE 重连握手推送版本触发重复 `loadVideos`——切库窗口内抑制二次加载。
+- **任务条空态/交互**：空闲时点右上角缩略图按钮显示空白条——补空闲详情分支显示缩略图总况；有任务时点按钮收起/恢复任务条（含修复阶段）。
+
 ## [14.5.0] - 2026-08-10
 
 ### Fixed (English)
