@@ -294,9 +294,11 @@ export function useThumbProgress() {
 
   function toggleBar() {
     if (mode.value !== 'auto') return
-    if (!thumbIdle.value || durationBusy.value) {
+    // 任一任务活跃（修复/缩略图/时长）：点右上角 chip = 收起/恢复任务条（记住用户选择）
+    if (!thumbIdle.value || durationBusy.value || remuxBusy.value) {
       userDismissed.value = !userDismissed.value
     } else {
+      // 全空闲：点 chip = 展开/收起缩略图总况详情（HeaderProgressBar 空闲详情分支）
       manualExpand.value = !manualExpand.value
     }
   }
@@ -315,6 +317,7 @@ export function useThumbProgress() {
     notifyIncoming,
     mode,
     showBar,
+    manualExpand,
     showThumbChip,
     thumbDotClass,
     thumbChipTitle,

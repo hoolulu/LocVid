@@ -10,6 +10,7 @@ const {
   lastCompleted,
   incomingFlash,
   showBar,
+  manualExpand,
   durationBusy,
   thumbIdle,
   stage,
@@ -17,6 +18,7 @@ const {
   pipelineText,
   stagePercent,
   pipelineSummary,
+  progressText,
   togglePause,
 } = useThumbProgress()
 
@@ -91,6 +93,16 @@ const barWidth = computed(() => `${Math.max(0, Math.min(100, stagePercent.value)
           {{ t('thumb.failedCount', { n: thumbProgress?.failed as number }) }}
         </button>
       </span>
+    </div>
+
+    <!-- 空闲详情：全空闲时点右上角「缩略图」chip 展开——显示缩略图总况，
+         避免进度条区域空白（此前 stage==='idle' 时内部什么都不渲染） -->
+    <div v-else-if="manualExpand" class="task-pipeline">
+      <span class="task-chip">{{ t('task.thumbLabel') }}</span>
+      <span class="progress-text task-pipeline-text" :title="progressText">
+        {{ progressText }}
+      </span>
+      <span v-if="pipelineSummary" class="task-pipeline-summary">{{ pipelineSummary }}</span>
     </div>
   </div>
 </template>
