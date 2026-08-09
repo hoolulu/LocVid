@@ -2,6 +2,26 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [14.0.1] - 2026-08-09
+
+### Added (English)
+
+- **Hover preview mode option**: Settings → Playback → Hover preview → new "Preview mode" dropdown — `Multi-segment video preview` (default, current behavior) or `Large thumbnail (no video loading)`, which skips video streaming on hover entirely (saves bandwidth/decoding on low-end machines).
+
+### Fixed (English)
+
+- **`html5_hover_preview_mode` was not persisted**: the backend `SettingsUpdate` (Pydantic) model was the save whitelist, and the new field was missing — the frontend POST was silently dropped by Pydantic, so the choice reverted to default after refresh. Added to the model.
+- **Thumbnails missing after switching library / first open**: the virtual grid (`VirtualVideoGrid`) kept the stale scroll position when switching library/category/page — with a smaller library the virtual window start could exceed the total row count, producing an empty grid (blank page until refresh). Now the visible range is clamped to the last row, and switching lists resets scroll to top.
+
+### 新增（中文）
+
+- **悬停预览模式选项**：设置 → 播放 → 悬停预览 → 新增「悬停预览模式」下拉——`多段视频预览`（默认，现有行为）或 `大缩略图（不加载视频）`（悬停完全不加载视频流，省带宽/解码资源，低配机友好）。
+
+### 修复（中文）
+
+- **`html5_hover_preview_mode` 保存不持久化**：后端 `SettingsUpdate`（Pydantic 模型）是保存白名单，新字段未加入 → 前端 POST 被 Pydantic 静默丢弃 → 刷新后回退默认。已补入模型。
+- **切库/首次打开缩略图不显示**：虚拟网格（VirtualVideoGrid）切库/切分类/翻页后残留旧滚动位置——切到小库时虚拟窗口起点可能超过总行数，导致整页空白（刷新才好）。现已 clamp 到末行，且切换列表自动回到顶部。
+
 ## [14.0.0] - 2026-08-09
 
 ### Added (English)
