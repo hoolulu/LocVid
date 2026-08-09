@@ -1,5 +1,6 @@
 // 截图采集脚本：README / 截图专页用（英文界面 + G电影 库，1600×900）
 // 用法：node e2e/capture-screenshots.mjs   （需 dev 服务在 127.0.0.1:3460 运行）
+import fs from 'node:fs'
 import { chromium } from 'playwright-core'
 
 const BASE = 'http://127.0.0.1:3460'
@@ -8,6 +9,7 @@ const LIB_LABEL = 'G电影'
 const OUT = 'doc/screenshots'
 const VIEWPORT = { width: 1600, height: 900 }
 const SAVE_DIR = 'F:/LocVid/doc/screenshots'
+const PLAYER_BG_PATH = 'F:/LocVid/.workbuddy/player_bg.jpg'
 
 const shotList = []
 const errors = []
@@ -125,7 +127,32 @@ await page
 await page.waitForTimeout(2000)
 const playerOpen = await page.locator('.player-stage').isVisible().catch(() => false)
 if (playerOpen) {
-  await shot(page, 'player.png', 'Player — real video frame + playlist')
+  // 注入风景背景图覆盖视频画面（截图展示用，不显示真实视频帧）
+  try {
+    const bgB64 = fs.readFileSync(PLAYER_BG_PATH).toString('base64')
+    await page.evaluate((b64) => {
+      const css = `.player-stage { background: url('data:image/jpeg;base64,${b64}') center/cover no-repeat !important; background-size: cover !important; }
+                 .player-stage video, .player-stage canvas,
+                 .player-movi-host { visibility: hidden !important; background: transparent !important; }
+                 movi-player { background: transparent !important; display: block !important; }
+                 movi-player video, movi-player canvas { visibility: hidden !important; }
+                 .player-stage .absolute.inset-0.z-10 { display: none !important; }`
+      const s = document.createElement('style')
+      s.textContent = css
+      document.head.appendChild(s)
+      const mp = document.querySelector('movi-player')
+      if (mp?.shadowRoot) {
+        const inner = mp.shadowRoot.querySelector('style#player-bg-hide') || document.createElement('style')
+        inner.id = 'player-bg-hide'
+        inner.textContent = 'video, canvas { visibility: hidden !important; }'
+        if (!inner.parentNode) mp.shadowRoot.appendChild(inner)
+      }
+    }, bgB64)
+    await page.waitForTimeout(500)
+  } catch (e) {
+    console.error('player bg inject failed:', e.message)
+  }
+  await shot(page, 'player.png', 'Player — video frame replaced with landscape (display only)')
   const trackBtns = page.locator(
     'movi-player button[title*="ubtitle"], movi-player button[aria-label*="ubtitle"], movi-player button[title*="udio"], movi-player button[aria-label*="udio"]',
   )
