@@ -49,22 +49,18 @@ LocVid scans your local video folders, auto-generates a thumbnail grid, and supp
 
 ### Screenshots
 
-> Placeholder demo data. 10.0.0+ is the Vue 3 rebuild with upgraded UI/UX.
+<table>
+<tr>
+  <td width="50%"><img src="doc/screenshots/gallery.png" width="100%" alt="Gallery (Classic)"/><br/><sub>Gallery (Classic) — thumbnail grid &amp; sidebar</sub></td>
+  <td width="50%"><img src="doc/screenshots/gallery-cinema.png" width="100%" alt="Gallery (Cinema)"/><br/><sub>Gallery (Cinema) — full-width layout</sub></td>
+</tr>
+<tr>
+  <td width="50%"><img src="doc/screenshots/player.png" width="100%" alt="Player"/><br/><sub>Player — real video frame &amp; playlist</sub></td>
+  <td width="50%"><img src="doc/screenshots/hover-preview.png" width="100%" alt="Hover preview"/><br/><sub>Hover preview on card</sub></td>
+</tr>
+</table>
 
-**Gallery** — category & folder tree on the left, paginated thumbnail grid.
-
-<p align="center"><img src="doc/screenshots/gallery.png" width="100%" alt="Gallery" /></p>
-
-**Player** — in-page player with right-hand playlist; sortable, prev/next, autoplay.
-
-<p align="center"><img src="doc/screenshots/player.png" width="100%" alt="Player" /></p>
-
-**Favorites / History / Settings / Batch** — see below.
-
-<p align="center"><img src="doc/screenshots/favorites.png" width="100%" alt="Favorites" /></p>
-<p align="center"><img src="doc/screenshots/history.png" width="100%" alt="History" /></p>
-<p align="center"><img src="doc/screenshots/settings.png" width="100%" alt="Settings" /></p>
-<p align="center"><img src="doc/screenshots/batch.png" width="100%" alt="Batch selection" /></p>
+> 📷 **All screenshots (sidebar filter, search, batch, light theme, tracks, etc.) → [doc/screenshots.md](doc/screenshots.md)**
 
 ---
 
@@ -345,31 +341,18 @@ python backend/tests/test_auto_new_video.py
 
 ### 界面预览
 
-> 演示数据为风景图占位，非真实视频库内容。10.0.0 为 Vue 3 重构版，界面布局与交互已升级，以下为功能示意截图。
+<table>
+<tr>
+  <td width="50%"><img src="doc/screenshots/gallery.png" width="100%" alt="画廊浏览（经典布局）"/><br/><sub>画廊浏览（经典）— 缩略图网格 + 侧栏分类</sub></td>
+  <td width="50%"><img src="doc/screenshots/gallery-cinema.png" width="100%" alt="画廊浏览（影院布局）"/><br/><sub>画廊浏览（影院）— 全宽布局</sub></td>
+</tr>
+<tr>
+  <td width="50%"><img src="doc/screenshots/player.png" width="100%" alt="内嵌播放"/><br/><sub>内嵌播放 — 真实画面 + 播放列表</sub></td>
+  <td width="50%"><img src="doc/screenshots/hover-preview.png" width="100%" alt="悬停预览"/><br/><sub>卡片悬停预览</sub></td>
+</tr>
+</table>
 
-**画廊浏览** — 左侧分类与子目录树，网格分页浏览整个视频库。
-
-<p align="center"><img src="doc/screenshots/gallery.png" width="100%" alt="画廊浏览" /></p>
-
-**内嵌播放** — 页面内播放器与右侧播放列表；支持排序、上一个/下一个、HTML5 连播。
-
-<p align="center"><img src="doc/screenshots/player.png" width="100%" alt="内嵌播放" /></p>
-
-**我的收藏** — 一键筛选已收藏视频，卡片左上角显示红心标记。
-
-<p align="center"><img src="doc/screenshots/favorites.png" width="100%" alt="我的收藏" /></p>
-
-**最近播放** — 按播放时间倒序浏览，快速回到上次看到的内容。
-
-<p align="center"><img src="doc/screenshots/history.png" width="100%" alt="最近播放" /></p>
-
-**设置** — 视频库管理、全局播放与缩略图选项；外部播放器路径（默认自动探测 PotPlayer）。
-
-<p align="center"><img src="doc/screenshots/settings.png" width="100%" alt="设置" /></p>
-
-**批量选择** — 多选后批量收藏、移动、删除，底部浮出操作栏。
-
-<p align="center"><img src="doc/screenshots/batch.png" width="100%" alt="批量选择" /></p>
+> 📷 **全部截图（侧栏过滤 / 搜索建议 / 批量 / 亮色主题 / 音轨选择等）→ [doc/screenshots.md](doc/screenshots.md)**
 
 ---
 
