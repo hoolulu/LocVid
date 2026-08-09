@@ -52,11 +52,16 @@ export function usePlaylistLoader() {
     if (added.length) player.playlist = [...player.playlist, ...added]
   }
 
+  // 请求序号：防竞态——播放器内快速切换排序时，慢的旧响应不能覆盖新排序的列表
+  let fetchSeq = 0
+
   async function fetchPage(page: number, sort: SortMode, replace: boolean) {
+    const mySeq = ++fetchSeq
     const ctx = player.playlistContext ?? snapshotContext()
     const seed = sort === 'random' ? player.playlistRandomSeed : null
     const params = buildPlaylistParams(ctx, page, sort, seed)
     const data = await getVideos(params)
+    if (mySeq !== fetchSeq) return data // 过期响应丢弃，不覆盖新列表（P2）
     if (replace) player.playlist = data.items
     else mergeVideos(data.items)
     updatePaging(data.page, data.totalPages)

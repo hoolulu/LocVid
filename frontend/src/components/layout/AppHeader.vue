@@ -121,6 +121,7 @@ async function onLibraryChange(e: Event) {
   gallery.clearFolderCaches()
   gallery.category = null
   gallery.folder = null
+  gallery.query = '' // 切库必须清搜索词，否则 B 库带着 A 库的关键词（常得空列表）
   gallery.page = 1
   await gallery.loadCategories()
   await gallery.loadVideos()

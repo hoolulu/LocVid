@@ -236,6 +236,9 @@ export function usePlayback() {
           void savePosition(id, mp.getDuration() || mp.getCurrentTime(), mp.getDuration() || undefined)
           void (async () => {
             await stopSlice()
+            // session 校验：自然播完到连播之间有异步窗口（stopSlice），
+            // 期间用户可能已手动切到 B——必须放弃连播，否则会基于 B 再播 C（连跳两集，P2）
+            if (player.isStale(session)) return
             if (settings.settings?.html5_playlist_autoplay !== false && player.open) {
               await playAdjacent(1)
             }
@@ -357,9 +360,19 @@ export function usePlayback() {
 
       player.closePlayer()
 
+      // 关闭后必须清 URL play 参数 + 重置恢复标记：
+      // 否则刷新/切库时 App.vue 的 watcher 会 tryRestore 重新打开播放器（违背用户关闭意图）
+      setPlayInUrl(null)
+
+      resetPlayerRestore()
+
     } else {
 
       player.closePlayer()
+
+      setPlayInUrl(null)
+
+      resetPlayerRestore()
 
     }
 

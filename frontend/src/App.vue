@@ -17,6 +17,8 @@ import ContextMenu from '@/components/layout/ContextMenu.vue'
 import PathTip from '@/components/layout/PathTip.vue'
 import { setupVideoContextActions } from '@/composables/useVideoContextActions'
 import { useRoute } from 'vue-router'
+import { usePathTip } from '@/composables/usePathTip'
+import { useHoverPreview } from '@/composables/useHoverPreview'
 import { useGalleryStore } from '@/stores/gallery'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -32,8 +34,20 @@ const route = useRoute()
 const { refresh: refreshThumbProgress } = useThumbProgress()
 const { tryRestore } = usePlayerRestore()
 const { playIdFromUrl } = usePlayerUrlSync()
+const { closeTip } = usePathTip()
+const { stopPreviewNow } = useHoverPreview()
 
 setupVideoContextActions()
+
+// 路由切换（切页到收藏/历史/专辑等）时清理悬停浮层与预览：
+// 否则浮层跨页残留（钉住模式永久显示），预览 <video> 继续静音播放占带宽（P2）
+watch(
+  () => route.name,
+  () => {
+    closeTip()
+    stopPreviewNow()
+  },
+)
 
 const { connect, disconnect } = useSSE(
   () => {},

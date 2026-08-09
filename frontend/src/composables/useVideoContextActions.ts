@@ -74,7 +74,12 @@ function patchVideoInPlayer(id: string, patch: Partial<Video>) {
   const player = usePlayerStore()
   const pl = player.playlist.find((v) => v.id === id)
   if (pl) Object.assign(pl, patch)
-  if (player.playingId === id && player.playingItem) Object.assign(player.playingItem, patch)
+  if (player.playingId === id && player.playingItem) {
+    Object.assign(player.playingItem, patch)
+    // 重命名会改变 id（路径 hash）：playingId 必须同步到新 id，
+    // 否则 playlistIndex 失配（= -1）、上一首/下一首/连播全部失效（P2）
+    if (patch.id) player.playingId = patch.id
+  }
 }
 
 export function setupVideoContextActions() {
