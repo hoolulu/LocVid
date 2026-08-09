@@ -153,8 +153,9 @@ _duration_probe_times: list[float] = []
 _duration_probe_times_lock = threading.Lock()
 _ffmpeg_bin: str | None = None
 _ffprobe_bin: str | None = None
-_last_capture_error: str = ""
-_last_capture_seek: float | None = None
+# 最近一次截帧错误/seek：按 video_id 隔离（多 worker 并发时 A 的失败不能读到 B 的错误，P2）
+_last_capture_errors: dict[str, str] = {}
+_last_capture_seeks: dict[str, float | None] = {}
 
 
 def _tool_search_dirs() -> list[Path]:
@@ -1600,7 +1601,7 @@ def _capture_timeout(seek: float, size: int) -> int:
 
 def _try_capture_thumb(item: VideoItem, seek: float, output: Path, use_mpegts: bool,
                        extra_probe_args: list[str] | None = None) -> bool:
-    global _last_capture_error, _last_capture_seek
+    global _last_capture_errors, _last_capture_seeks
     wip = output.parent / f"{output.stem}_wip_{uuid.uuid4().hex[:8]}.jpg"
     wip.unlink(missing_ok=True)
     cmd = [ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
@@ -1630,19 +1631,19 @@ def _try_capture_thumb(item: VideoItem, seek: float, output: Path, use_mpegts: b
         if p.returncode != 0 or not wip.exists() or wip.stat().st_size <= 0:
             wip.unlink(missing_ok=True)
             err = (stderr or b"").decode("utf-8", errors="replace").strip()
-            _last_capture_error = err[-240:] if err else f"ffmpeg 退出码 {p.returncode}"
+            _last_capture_errors[item.id] = err[-240:] if err else f"ffmpeg 退出码 {p.returncode}"
             return False
         if output.exists():
             output.unlink(missing_ok=True)
         wip.replace(output)
-        _last_capture_error = ""
-        _last_capture_seek = seek
+        _last_capture_errors.pop(item.id, None)
+        _last_capture_seeks[item.id] = seek
         return True
     except subprocess.TimeoutExpired:
         from loc_gallery.process_util import kill_process_tree
         kill_process_tree(p.pid)
         wip.unlink(missing_ok=True)
-        _last_capture_error = f"ffmpeg 超时 ({timeout}s)，位置 {seek:.0f}s"
+        _last_capture_errors[item.id] = f"ffmpeg 超时 ({timeout}s)，位置 {seek:.0f}s"
         return False
     except Exception as exc:
         # Popen 本身抛错（ffmpeg 不可执行/句柄不足）时 p 为 None——必须判空，
@@ -1651,7 +1652,7 @@ def _try_capture_thumb(item: VideoItem, seek: float, output: Path, use_mpegts: b
             from loc_gallery.process_util import kill_process_tree
             kill_process_tree(p.pid)
         wip.unlink(missing_ok=True)
-        _last_capture_error = str(exc)
+        _last_capture_errors[item.id] = str(exc)
         return False
 
 
@@ -1662,9 +1663,9 @@ def _generate_thumb_file(
     explicit_position: bool = False,
     output: Path | None = None,
 ) -> bool:
-    global _last_capture_error, _last_capture_seek
-    _last_capture_error = ""
-    _last_capture_seek = None
+    global _last_capture_errors, _last_capture_seeks
+    _last_capture_errors.clear()
+    _last_capture_seeks.clear()
     if position is None:
         position = float(get_setting("thumb_position") or 0.6)
     else:
@@ -1869,7 +1870,7 @@ def _process_one(library_id: str, video_id: str) -> None:
     try:
         ok = _generate_thumb_file(item, position=pos, explicit_position=explicit)
         if ok:
-            seek_val = round(_last_capture_seek, 1) if _last_capture_seek is not None else None
+            seek_val = round(_last_capture_seeks[video_id], 1) if _last_capture_seeks.get(video_id) is not None else None
             _set_entry(
                 video_id,
                 path=item.path,
@@ -1882,7 +1883,7 @@ def _process_one(library_id: str, video_id: str) -> None:
                 error=None,
             )
         else:
-            err = _last_capture_error or "ffmpeg 生成失败"
+            err = _last_capture_errors.get(video_id, "") or "ffmpeg 生成失败"
             _set_entry(video_id, status=STATUS_FAILED, error=err)
     except Exception as exc:
         _set_entry(video_id, status=STATUS_FAILED, error=str(exc))
@@ -1894,25 +1895,29 @@ def _process_one(library_id: str, video_id: str) -> None:
 
 
 def _kick_orphan_queued() -> None:
-    """索引为 queued 但不在队列/生成中的任务，重新入队（每轮限量，避免洪峰）。"""
+    """索引为 queued 但不在队列/生成中的任务，重新入队（每轮限量，避免洪峰）。
+    必须遍历【所有库】的索引：worker 线程的 contextvar 只指向最近一个任务的库，
+    只扫 _idx() 会让其它库的孤儿 queued 条目永不恢复（P2）。"""
     with _lock:
         queued_in_mem = {q.video_id for q in _queue}
         generating_ids = {k.split(":", 1)[-1] for k in _generating}
+        indexes = {lid: dict(idx) for lid, idx in _indexes.items()}
     kicked = 0
-    for vid, entry in list(_idx().items()):
-        if kicked >= 12:
-            break
-        if entry.get("status") != STATUS_QUEUED:
-            continue
-        if vid in queued_in_mem or vid in generating_ids:
-            continue
-        if _has_usable_thumb(vid):
-            continue
-        item = get_by_id(_lid(), vid)
-        if not item or not _video_is_processable(item):
-            continue
-        _enqueue(vid, Priority.HIGH)
-        kicked += 1
+    for lid, idx in indexes.items():
+        for vid, entry in idx.items():
+            if kicked >= 12:
+                break
+            if entry.get("status") != STATUS_QUEUED:
+                continue
+            if vid in queued_in_mem or vid in generating_ids:
+                continue
+            if _has_usable_thumb(vid):
+                continue
+            item = get_by_id(lid, vid)
+            if not item or not _video_is_processable(item):
+                continue
+            _enqueue(vid, Priority.HIGH, library_id=lid)
+            kicked += 1
 
 
 def _worker_loop() -> None:
@@ -1991,3 +1996,17 @@ def stop_idle_scan_background() -> None:
     with _lock:
         _queue[:] = [q for q in _queue if q.priority == Priority.HIGH.value]
     _notify_progress()
+def purge_library_thumb_data(library_id: str) -> None:
+    """删除库时清理缩略图内存/磁盘状态：防已删库的排队任务继续被 worker 执行（会重建已删目录写文件）。"""
+    global _generating_started
+    with _lock:
+        _indexes.pop(library_id, None)
+        _dirty_libs.discard(library_id)
+        _queue[:] = [q for q in _queue if q.library_id != library_id]
+        prefix = f"{library_id}:"
+        _generating.difference_update(k for k in _generating if k.startswith(prefix))
+        _generating_started = {k: v for k, v in _generating_started.items() if not k.startswith(prefix)}
+    try:
+        thumb_index_file(library_id).unlink(missing_ok=True)
+    except OSError:
+        pass

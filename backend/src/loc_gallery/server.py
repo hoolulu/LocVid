@@ -351,7 +351,8 @@ class LibraryDeleteRequest(BaseModel):
 
 
 _observers: dict[str, Observer] = {}
-_sse_queues: list[asyncio.Queue] = []
+# (loop, queue) 元组：跨线程广播需要 loop.call_soon_threadsafe（后台线程 put_nowait 非线程安全）
+_sse_queues: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
 
 
 def resolve_library_id(library_id: str | None = Query(None)) -> str:
@@ -367,9 +368,14 @@ def _broadcast(event_type: str = "version", library_id: str | None = None, data:
     if data is None:
         data = str(get_version(lid))
     payload = f"{lid}:{data}" if event_type == "version" else data
-    for q in _sse_queues:
+    msg = f"{event_type}:{payload}"
+    for loop, q in list(_sse_queues):
         try:
-            q.put_nowait(f"{event_type}:{payload}")
+            # 跨线程安全入队（watchdog/rescan/缩略图线程调用 _broadcast）
+            if q.qsize() >= 200:
+                # 消费端断开但未清理时防无界累积：SSE 是瞬态通知，丢弃最旧不影响功能
+                continue
+            loop.call_soon_threadsafe(q.put_nowait, msg)
         except Exception:
             pass
 
@@ -1035,6 +1041,11 @@ async def api_libraries_delete(library_id: str, req: LibraryDeleteRequest | None
         remove_library(library_id, delete_data=delete_data)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    # 清理缩略图队列/索引/扫描缓存：防已删库任务继续被执行（重建已删目录写文件）+ 残留数据被读（P2）
+    from loc_gallery.thumb_manager import purge_library_thumb_data
+    from loc_gallery.scanner import purge_library_scan_cache
+    purge_library_thumb_data(library_id)
+    purge_library_scan_cache(library_id)
     _restart_watchers()
     return {"ok": True, "active_library_id": get_active_library_id()}
 
@@ -2104,9 +2115,12 @@ async def api_service_restart():
 @app.get("/api/events")
 async def api_events(library_id: str | None = Query(None)):
     lid = (library_id or "").strip() or get_active_library_id()
+    # 校验库存在：无效库 id 不应建立 SSE（否则前端收到空库版本号却无刷新，P2）
+    if not get_library(lid):
+        raise HTTPException(404, "视频库不存在")
     set_thread_library(lid)
     queue: asyncio.Queue = asyncio.Queue()
-    _sse_queues.append(queue)
+    _sse_queues.append((asyncio.get_running_loop(), queue))
 
     async def stream():
         try:
@@ -2115,8 +2129,8 @@ async def api_events(library_id: str | None = Query(None)):
                 msg = await queue.get()
                 yield f"data: {msg}\n\n"
         finally:
-            if queue in _sse_queues:
-                _sse_queues.remove(queue)
+            if any(q is queue for _, q in _sse_queues):
+                _sse_queues[:] = [(loop_, q) for loop_, q in _sse_queues if q is not queue]
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

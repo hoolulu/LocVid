@@ -385,3 +385,10 @@ def get_folder_tree(library_id: str, category: str) -> dict:
 
     roots = _sort_tree(roots)
     return {"category": category, "direct_count": direct_count, "folders": roots}
+def purge_library_scan_cache(library_id: str) -> None:
+    """删除库时清理扫描缓存与版本号（防残留后 get_all 返回已删库数据）。"""
+    with _lock:
+        _caches.pop(library_id, None)
+        _versions.pop(library_id, None)
+        _sort_id_indexes.pop(library_id, None)
+        _category_items.pop(library_id, None)
