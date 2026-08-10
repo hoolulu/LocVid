@@ -1237,6 +1237,69 @@ body.manage-mode .card-album-badge {
 .lg-modal-overlay--top {
   z-index: 320;
 }
+/* 通用弹窗容器（TagEditor 等业务对话框）：覆盖背景/边框/圆角，缺定义会导致无样式白板 */
+.lg-modal {
+  width: min(24rem, 92vw);
+  border-radius: 8px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text-primary);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  padding: 16px;
+}
+.lg-modal-close {
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.85rem;
+  color: var(--lg-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.lg-modal-close:hover {
+  background: var(--lg-bg-hover);
+  color: var(--lg-text-primary);
+}
+/* 通用输入框与按钮（TagEditor 等对话框） */
+.lg-input {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-bg-input);
+  padding: 0.4rem 0.55rem;
+  font-size: 0.8125rem;
+  color: var(--lg-text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.lg-input:focus {
+  border-color: var(--lg-accent);
+}
+.lg-btn {
+  border-radius: 6px;
+  border: 1px solid var(--lg-btn-border);
+  background: var(--lg-btn-bg);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--lg-btn-text);
+  transition: background 0.15s;
+}
+.lg-btn:hover:not(:disabled) {
+  background: var(--lg-btn-bg-hover);
+}
+.lg-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.lg-btn-primary {
+  background: var(--lg-accent);
+  border-color: var(--lg-accent);
+  color: var(--lg-text-on-accent);
+}
+.lg-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.lg-btn-ghost {
+  background: transparent;
+}
 /* 通用确认对话框（替代原生 confirm） */
 .lg-confirm-dialog {
   width: min(24rem, 92vw);
