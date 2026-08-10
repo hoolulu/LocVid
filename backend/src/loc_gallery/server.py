@@ -530,6 +530,11 @@ class _ChangeHandler(FileSystemEventHandler):
 
 def _start_watchers() -> None:
     global _observers
+    # 临时禁用 watchdog（AVV 批量整理期间，config.WATCHDOG_ENABLED=False）：
+    # 避免移动/改名产生的海量文件事件触发反复全库刷新导致服务卡死
+    from loc_gallery.config import WATCHDOG_ENABLED
+    if not WATCHDOG_ENABLED:
+        return
     for lib in list_libraries():
         if not lib.exists():
             continue
@@ -1143,6 +1148,11 @@ async def api_folders_reorder(req: FolderReorderRequest, library_id: str = Depen
 
 
 def _do_rescan(library_id: str) -> None:
+    # 关键：api_rescan 走 asyncio.to_thread，新线程不继承 ContextVar 库上下文，
+    # 否则 sync_index_with_videos/cleanup_orphans/reconcile 等无参函数会作用到
+    # 空库（_lid() 落到 current_library_id() 默认 ""）——rescan 后缩略图索引不更新
+    # （ready 全丢）、孤儿清理作用错库。必须在此显式设置线程库。
+    set_thread_library(library_id)
     refresh_cache(library_id)
     reconcile_deferred_thumbs()
     sync_index_with_videos()
