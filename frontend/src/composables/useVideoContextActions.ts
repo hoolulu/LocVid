@@ -19,6 +19,7 @@ export function videoContextMenuItems(video?: Video): ContextMenuItem[] {
       label: video?.albumIds?.length ? t('album.manage', { n: video.albumIds.length }) : t('album.add'),
       action: 'add-album',
     },
+    { label: t('menu.editTags'), action: 'edit-tags' },
     { label: t('menu.rename'), action: 'rename' },
     { label: t('menu.moveCategory'), action: 'move' },
     { label: t('menu.openFolder'), action: 'open-folder' },
@@ -112,6 +113,8 @@ export function setupVideoContextActions() {
       if (plItem) plItem.favorited = !plItem.favorited
     } else if (detail.action === 'add-album') {
       ui.openAlbumPicker([id])
+    } else if (detail.action === 'edit-tags') {
+      ui.openTagEditor(id)
     } else if (detail.action === 'open-folder') {
       await openFolder(id)
     } else if (detail.action === 'copy-path') {
@@ -141,13 +144,18 @@ export function setupVideoContextActions() {
           suffix && name.toLowerCase().endsWith(suffix.toLowerCase())
             ? name.slice(0, -suffix.length)
             : name
-        const res = await renameVideo(id, stem)
-        // 改名后视频 id（路径 hash）变化：同步更新播放列表里的 id，
-        // 列表本身由 loadVideos 重拉（后端已把收藏/历史/专辑/缩略图迁移到新 id）
-        const newId = res.id ?? id
-        patchVideoInPlayer(id, { id: newId, filename: stem + suffix, title: stem })
-        await gallery.loadVideos()
-        ui.showToast(t('menu.renamed'))
+        try {
+          const res = await renameVideo(id, stem)
+          // 改名后视频 id（路径 hash）变化：同步更新播放列表里的 id，
+          // 列表本身由 loadVideos 重拉（后端已把收藏/历史/专辑/缩略图迁移到新 id）
+          const newId = res.id ?? id
+          patchVideoInPlayer(id, { id: newId, filename: stem + suffix, title: stem })
+          await gallery.loadVideos()
+          ui.showToast(t('menu.renamed'))
+        } catch (e) {
+          const msg = (e as { message?: string })?.message || String(e)
+          ui.showToast(t('menu.renameFailed', { msg }), 'error')
+        }
       }
     } else if (detail.action === 'move') {
       ui.openFolderMove({ mode: 'videos', videoIds: [id], category: gallery.category || undefined })

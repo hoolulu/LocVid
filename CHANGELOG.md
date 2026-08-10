@@ -2,6 +2,56 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.0.0] - 2026-08-11
+
+### Added (English)
+
+- **Tagging system**: videos can now carry tags. A tag store persists `video → [tags]`; a filename analyzer extracts the embedded ID, theme keywords and source, and tags new videos automatically when they enter an ID-based library. Tag album views aggregate videos by tag **dynamically** (no duplicated items stored). New endpoints manage tags (`GET/PUT/POST/DELETE /api/videos/{id}/tags`, `GET /api/tags`, `GET /api/tags/{tag}/videos`), and the per-tag album threshold is configurable in Settings.
+- **Library types**: each library is now either **ID-based** (new files are auto-renamed by their embedded ID, auto-tagged and grouped into tag albums) or **Title-based** (files are added as-is — no renaming, no tagging). Defaults to **Title-based**; ID-based is enabled explicitly per library. The library management UI shows a segmented type picker and a folder-browse button per row.
+- **Hover-preview off state**: choosing "Off" fully suppresses the hover overlay (no thumbnail either); for videos that play but cannot be hover-previewed, the overlay now shows the thumbnail with a centered notice badge.
+- **Error feedback**: the toast system distinguishes success/error (red + icon). All dialog operations — add/save/delete library, save settings, tag editor, manual rename — now surface a success or failure message instead of failing silently.
+- **Tag display**: tags render in the hover path tip and on the player page (row hidden when empty); right-click on a video opens a tag editor.
+
+### Changed (English)
+
+- **Preset names renamed**: `netflix` / `youtube` presets are now `cinema` / `classic` (影院 / 经典). Old `localStorage` values are migrated automatically.
+- **Hover-preview settings moved** to the Thumbnails tab; the enable switch and the preview-mode picker are merged into a single selector (Off / multi-segment video / large thumbnail).
+- **Idle thumbnail scan now defaults to on**.
+- **Library management tab rebuilt** with Tailwind utilities (no custom CSS): card/table layout, segmented radio for library type, per-row path browsing, side-by-side type descriptions.
+
+### Fixed (English)
+
+- **Auto-tag pipeline** (P1): manufacturer not recognized when the filename has a prefix (regex anchored to the start); theme/source tags lost after auto-rename (analysis now runs **once** on the original filename instead of re-analyzing the normalized name); tags not migrated on manual rename (the migration list was missing the tag store).
+- **Filename sanitizer could drop a closing bracket** from title-based names (`Avatar (2009) [1080p] [BluRay].mkv` → unbalanced parens) — trailing cleanup no longer removes `]`.
+- **Adding a library gave no feedback**: the button executed but showed nothing; now validates empty fields, toasts success, and reports backend errors.
+- **Context menu scrollbar always visible**: hidden while keeping long-menu scrolling.
+- **Settings preset dropdown showed empty**: the preset is a local preference (localStorage) but the form bound the backend response — local theme/preset are now merged into the form on load and after save.
+- **Silent failures fixed**: save library row, delete library, global settings save, tag editor save, manual rename now show an error toast on failure.
+
+### 新增（中文）
+
+- **标签体系**：视频支持打标签。标签存储持久化 `video → [标签]`；文件名分析器从文件名提取编号、题材与来源，编号影片库新入库时自动打标。标签专辑按标签**动态聚合**（不落盘重复条目）。新增标签接口（视频标签增删改查、标签列表、按标签取视频），标签专辑数量阈值可在设置页配置。
+- **库类型**：每个库区分为 **编号影片库**（新文件按嵌入编号自动规范命名、自动打标并归入标签专辑）或 **标题影片库**（文件原样入库——不改名、不打标）。默认**标题影片库**，编号影片库需在库管理中显式指定。库管理界面提供分段单选与逐库目录浏览。
+- **悬停预览关闭态**：选择"关闭预览"后悬停完全不再弹出浮层（含缩略图）；对可播放但不支持悬停预览的视频，浮层改为显示缩略图并居中提示徽标。
+- **错误反馈**：toast 系统区分成功/失败（红色+图标）。所有对话框操作——新增/保存/删除视频库、保存设置、标签编辑器、手动重命名——均给出成功或失败提示，不再静默失败。
+- **标签展示**：标签显示在悬停浮层与播放页（无标签时整行隐藏）；视频右键可打开标签编辑器。
+
+### 变更（中文）
+
+- **预设更名**：`netflix` / `youtube` 预设更名为 `cinema` / `classic`（影院 / 经典），旧 `localStorage` 值自动迁移。
+- **悬停预览设置移至「缩略图」页签**：开关与预览模式合并为单个下拉（关闭 / 多段视频预览 / 大缩略图）。
+- **空闲缩略图扫描默认开启**。
+- **视频库管理页签改用 Tailwind 工具类重构**（弃用手写 CSS）：卡片/表格布局、库类型分段单选、逐库目录浏览、类型说明并排展示。
+
+### 修复（中文）
+
+- **自动打标管道**（P1）：文件名带前缀时识别不到厂商（正则锚定在开头）；自动改名后题材/来源标签丢失（改为**只分析一次**原始文件名，不再对规范化名重新分析）；手动改名后标签不迁移（迁移清单漏了标签存储）。
+- **文件名清洗误删右括号**：`Avatar (2009) [1080p] [BluRay].mkv` 这类标题型文件名会被改成括号不闭合——尾部清理不再删除 `]`。
+- **新增视频库无反馈**：按钮有执行但无任何提示——现补空字段校验、成功提示与后端错误提示。
+- **右键菜单滚动条常显**：隐藏滚动条但保留长菜单滚动。
+- **设置页预设下拉显示空值**：预设是本地偏好（localStorage）但表单绑定后端返回——本地主题/预设现于加载与保存后合并进表单。
+- **静默失败修复**：保存库设置、删除视频库、全局设置保存、标签编辑器保存、手动重命名失败时现均显示错误提示。
+
 ## [15.0.1] - 2026-08-11
 
 ### Fixed (English)

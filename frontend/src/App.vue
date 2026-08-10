@@ -8,6 +8,7 @@ import PlayerView from '@/components/player/PlayerView.vue'
 import SettingsDialog from '@/components/dialogs/SettingsDialog.vue'
 import NonstandardDialog from '@/components/dialogs/NonstandardDialog.vue'
 import AlbumPickerDialog from '@/components/dialogs/AlbumPickerDialog.vue'
+import TagEditorDialog from '@/components/dialogs/TagEditorDialog.vue'
 import ThumbFailedDialog from '@/components/dialogs/ThumbFailedDialog.vue'
 import ThumbPickerDialog from '@/components/dialogs/ThumbPickerDialog.vue'
 import FolderMoveDialog from '@/components/dialogs/FolderMoveDialog.vue'
@@ -142,6 +143,7 @@ function onGlobalKeydown(e: KeyboardEvent) {
   <SettingsDialog />
   <NonstandardDialog />
   <AlbumPickerDialog />
+  <TagEditorDialog />
   <ThumbFailedDialog />
   <ThumbPickerDialog />
   <FolderMoveDialog />
@@ -150,8 +152,23 @@ function onGlobalKeydown(e: KeyboardEvent) {
   <ContextMenu />
   <PathTip />
 
-  <div v-if="ui.toast" class="lg-toast">
-    <svg class="lg-toast-icon" viewBox="0 0 24 24" aria-hidden="true">
+  <div v-if="ui.toast" class="lg-toast" :class="{ 'lg-toast--error': ui.toast.type === 'error' }">
+    <svg
+      v-if="ui.toast.type === 'error'"
+      class="lg-toast-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 8v5m0 3v.01M12 3l9 16H3l9-16z"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+    <svg v-else class="lg-toast-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path
         d="M5 12l4 4L19 6"
         fill="none"

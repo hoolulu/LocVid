@@ -12,7 +12,7 @@ import {
   setSavedTheme,
 } from '@/utils/userPrefs'
 
-export type ThemePreset = 'netflix' | 'youtube'
+export type ThemePreset = 'cinema' | 'classic'
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Settings | null>(null)
@@ -32,9 +32,12 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function loadSettings() {
-    settings.value = await getSettings()
+    const data = await getSettings()
     theme.value = getSavedTheme()
     preset.value = getSavedPreset()
+    // 后端 settings 不含 ui_theme/ui_preset（这两项是本地偏好，存 localStorage）：
+    // 合并进去，让设置页下拉能正确显示当前值而不是空值
+    settings.value = { ...(data || {}), ui_theme: theme.value, ui_preset: preset.value } as Settings
     applyDom()
   }
 
@@ -56,8 +59,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function updateSettings(data: Partial<Settings>, scope: 'global' | 'library' = 'global') {
     const payload = { ...data }
-    if (payload.ui_preset === 'spotify' as string) payload.ui_preset = 'netflix'
-    settings.value = await saveSettings(payload, scope)
+    if (payload.ui_preset === 'spotify' as string) payload.ui_preset = 'classic'
+    const saved = await saveSettings(payload, scope)
     if (data.ui_theme === 'light' || data.ui_theme === 'dark') {
       theme.value = data.ui_theme
       setSavedTheme(data.ui_theme)
@@ -66,6 +69,8 @@ export const useSettingsStore = defineStore('settings', () => {
       preset.value = normalizePreset(data.ui_preset)
       setSavedPreset(preset.value)
     }
+    // 后端返回值不含 ui_theme/ui_preset：合并本地偏好，保持设置页下拉正确显示
+    settings.value = { ...(saved || {}), ui_theme: theme.value, ui_preset: preset.value } as Settings
     applyDom()
   }
 

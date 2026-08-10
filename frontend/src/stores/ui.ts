@@ -218,6 +218,20 @@ export const useUiStore = defineStore('ui', () => {
 
   }
 
+  // 标签编辑器（右键 → 编辑标签）
+  const tagEditorOpen = ref(false)
+  const tagEditorId = ref<string | null>(null)
+
+  function openTagEditor(videoId: string) {
+    tagEditorId.value = videoId
+    tagEditorOpen.value = true
+  }
+
+  function closeTagEditor() {
+    tagEditorOpen.value = false
+    tagEditorId.value = null
+  }
+
   function lockModalScroll(lock: boolean) {
     document.documentElement.classList.toggle('lg-modal-open', lock)
   }
@@ -338,6 +352,10 @@ export const useUiStore = defineStore('ui', () => {
     albumPickerOpen,
 
     albumPickerIds,
+    tagEditorOpen,
+    tagEditorId,
+    openTagEditor,
+    closeTagEditor,
 
     thumbFailedOpen,
 

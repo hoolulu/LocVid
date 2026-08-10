@@ -301,7 +301,7 @@ async function onPlaylistSortChange(e: Event) {
           <!-- <movi-player> web 组件挂载点：自带 canvas 渲染 + 控件 + 字幕 -->
           <div ref="moviHost" class="player-movi-host absolute inset-0"></div>
 
-          <!-- 左上角悬浮返回按钮：鼠标悬停在播放区域才显示，移出隐藏（Netflix/YouTube 标准交互） -->
+          <!-- 左上角悬浮返回按钮：鼠标悬停在播放区域才显示，移出隐藏（影院/经典预设标准交互） -->
           <button
             class="player-back-top"
             :class="{ 'player-back-top--hidden': !backVisible }"
@@ -347,6 +347,14 @@ async function onPlaylistSortChange(e: Event) {
           <div class="player-video-meta min-w-0">
             <h2 class="truncate text-lg font-bold leading-snug">{{ current?.title || current?.filename }}</h2>
             <p class="mt-0.5 truncate text-[13px] text-[var(--lg-text-muted)]">{{ current?.path }}</p>
+            <!-- 标签行：仅当有标签时显示 -->
+            <p v-if="(current?.tags ?? []).length" class="mt-1 flex flex-wrap gap-1.5 text-[12px]">
+              <span
+                v-for="tag in current?.tags ?? []"
+                :key="tag"
+                class="rounded bg-sky-500/10 px-1.5 py-0.5 text-sky-400"
+              >#{{ tag }}</span>
+            </p>
           </div>
           <div class="player-toolbar-actions">
             <button

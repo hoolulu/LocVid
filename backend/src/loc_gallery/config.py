@@ -74,8 +74,9 @@ THUMB_POSITION = 0.6
 THUMB_RANDOM_MIN = 0.5  # legacy, no longer used
 THUMB_RANDOM_MAX = 0.8  # legacy, no longer used
 THUMB_WORKERS = 3
-THUMB_IDLE_SCAN = False
+THUMB_IDLE_SCAN = True
 THUMB_PROGRESS_BAR = "auto"  # auto | always | never
+TAG_ALBUM_MIN_VIDEOS = 3  # 标签专辑最少视频数（低于该值的标签不显示为专辑）
 THUMB_CANDIDATE_COUNT = 6    # 3-12
 THUMB_AUTO_SELECT_BEST = False  # auto-pick best in single picker
 THUMB_BATCH_AUTO_SELECT = True  # auto-pick best in batch mode
@@ -132,6 +133,10 @@ def category_meta_file(library_id: str) -> Path:
 
 def albums_file(library_id: str) -> Path:
     return library_data_dir(library_id) / "albums.json"
+
+
+def tags_file(library_id: str) -> Path:
+    return library_data_dir(library_id) / "tags.json"
 
 
 def library_settings_file(library_id: str) -> Path:

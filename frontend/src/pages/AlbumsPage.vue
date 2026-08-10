@@ -217,7 +217,7 @@ async function onContextAction(ev: Event) {
     <AppHeader />
 
     <div class="flex min-h-0 flex-1">
-      <CategorySidebar v-if="settings.preset === 'youtube'" />
+      <CategorySidebar v-if="settings.preset === 'classic'" />
       <main class="flex-1 overflow-y-auto p-4">
 
       <div class="mb-4 flex items-center justify-between">
@@ -300,9 +300,15 @@ async function onContextAction(ev: Event) {
 
           <div class="p-3">
 
-            <h3 class="truncate text-sm font-medium">{{ a.name }}</h3>
+            <h3 class="flex items-center gap-1.5 truncate text-sm font-medium">
+              <span v-if="a.filter?.tag" class="shrink-0 rounded bg-sky-500/10 px-1 text-[11px] font-normal text-sky-400">#</span>
+              <span class="truncate">{{ a.name }}</span>
+            </h3>
 
-            <p class="text-xs text-[var(--lg-text-muted)]">{{ t('album.videoCount', { n: a.video_count || 0 }) }}</p>
+            <p class="text-xs text-[var(--lg-text-muted)]">
+              {{ t('album.videoCount', { n: a.video_count || 0 }) }}
+              <span v-if="a.filter?.tag" class="text-sky-400/70">· {{ t('album.tagAlbum') }}</span>
+            </p>
 
           </div>
 

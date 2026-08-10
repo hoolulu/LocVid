@@ -92,7 +92,7 @@ onUnmounted(() => {
   <div
     v-if="ui.contextMenu"
     ref="menuRef"
-    class="context-menu fixed z-[400] min-w-40 max-h-[min(70vh,24rem)] overflow-y-auto rounded border border-[var(--lg-border)] bg-[var(--lg-bg-elevated)] py-1 text-sm shadow-lg"
+    class="context-menu fixed z-[400] min-w-40 max-h-[min(70vh,24rem)] overflow-y-auto rounded border border-[var(--lg-border)] bg-[var(--lg-bg-elevated)] py-1 text-sm shadow-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     :style="{ left: `${menuPos.x}px`, top: `${menuPos.y}px` }"
     @click.stop
   >

@@ -30,13 +30,13 @@ function onLocaleChange(e: Event) {
   setLocale((e.target as HTMLSelectElement).value as Locale)
 }
 
-type SettingsTab = 'library' | 'playback' | 'thumbnail' | 'other'
+type SettingsTab = 'library' | 'playback' | 'thumbnail' | 'tag' | 'other'
 const TAB_KEY = 'loc-gallery-settings-tab'
 
 const tab = ref<SettingsTab>((localStorage.getItem(TAB_KEY) as SettingsTab) || 'library')
 const settingsScope = ref<'global' | 'library'>('global')
 const form = reactive<Partial<Settings>>({})
-const newLib = reactive({ alias: '', path: '' })
+const newLib = reactive({ alias: '', path: '', library_type: 'title-based' as 'id-based' | 'title-based' })
 const pageSizeMode = ref<'40' | '80' | 'custom'>('40')
 const customPageSize = ref('40')
 
@@ -72,14 +72,28 @@ async function onCleanupThumbs() {
 }
 
 const presets = computed(() => [
-  { value: 'netflix', label: t('settings.preset.cinema') },
-  { value: 'youtube', label: t('settings.preset.classic') },
+  { value: 'cinema', label: t('settings.preset.cinema') },
+  { value: 'classic', label: t('settings.preset.classic') },
 ])
+
+// 悬停预览：开关 + 模式 合并为单一下拉（off | video | thumb），避免语义重复
+const hoverPreviewOption = computed<'off' | 'video' | 'thumb'>({
+  get: () => (form.html5_hover_preview ? (form.html5_hover_preview_mode === 'thumb' ? 'thumb' : 'video') : 'off'),
+  set: (v) => {
+    if (v === 'off') {
+      form.html5_hover_preview = false
+    } else {
+      form.html5_hover_preview = true
+      form.html5_hover_preview_mode = v
+    }
+  },
+})
 
 const tabs = computed<{ id: SettingsTab; label: string }[]>(() => [
   { id: 'library', label: t('settings.tab.library') },
   { id: 'playback', label: t('settings.tab.playback') },
   { id: 'thumbnail', label: t('settings.tab.thumbnail') },
+  { id: 'tag', label: t('settings.tab.tag') },
   { id: 'other', label: t('settings.tab.other') },
 ])
 
@@ -102,7 +116,7 @@ watch(
 watch(
   () => form.ui_preset,
   (v) => {
-    if (v === 'netflix' || v === 'youtube') settings.previewPreset(v)
+    if (v === 'cinema' || v === 'classic') settings.previewPreset(v)
   },
 )
 
@@ -124,9 +138,14 @@ function applyPageSizeToForm() {
 
 async function save() {
   applyPageSizeToForm()
-  await settings.updateSettings({ ...form }, settingsScope.value)
-  ui.showToast(t('settings.saved'))
-  close()
+  try {
+    await settings.updateSettings({ ...form }, settingsScope.value)
+    ui.showToast(t('settings.saved'))
+    close()
+  } catch (e) {
+    const msg = (e as { message?: string })?.message || String(e)
+    ui.showToast(t('settings.saveFailed', { msg }), 'error')
+  }
 }
 
 async function pickPath() {
@@ -134,32 +153,62 @@ async function pickPath() {
   if (res.path) newLib.path = res.path
 }
 
-async function addLibrary() {
-  if (!newLib.alias || !newLib.path) return
-  await createLibrary(newLib.alias, newLib.path)
-  newLib.alias = ''
-  newLib.path = ''
-  await library.loadLibraries()
+async function pickLibPath(lib: { path: string }) {
+  const res = await pickFolder()
+  if (res.path) lib.path = res.path
 }
 
-async function saveLibraryRow(lib: { id: string; alias: string; path: string }) {
-  await updateLibrary(lib.id, { alias: lib.alias, path: lib.path })
-  ui.showToast(t('settings.saved'))
+async function addLibrary() {
+  if (!newLib.alias || !newLib.path) {
+    ui.showToast(t('settings.library.addRequired'))
+    return
+  }
+  try {
+    await createLibrary(newLib.alias, newLib.path, newLib.library_type)
+    newLib.alias = ''
+    newLib.path = ''
+    newLib.library_type = 'title-based'
+    await library.loadLibraries()
+    ui.showToast(t('settings.library.added'))
+  } catch (e) {
+    const msg = (e as { message?: string })?.message || String(e)
+    ui.showToast(t('settings.library.addFailed', { msg }), 'error')
+  }
+}
+
+async function saveLibraryRow(lib: { id: string; alias: string; path: string; library_type?: string }) {
+  try {
+    await updateLibrary(lib.id, {
+      alias: lib.alias,
+      path: lib.path,
+      library_type: lib.library_type || 'title-based',
+    })
+    await library.loadLibraries()
+    ui.showToast(t('settings.saved'))
+  } catch (e) {
+    const msg = (e as { message?: string })?.message || String(e)
+    ui.showToast(t('settings.saveFailed', { msg }), 'error')
+  }
 }
 
 async function onRemoveLibrary(id: string, alias: string) {
   const ok = await ui.showConfirm(t('settings.library.deleteConfirm', { alias }), t('settings.deleteLibrary'))
   if (!ok) return
-  await deleteLibrary(id)
-  await library.loadLibraries()
-  gallery.clearFolderCaches()
-  gallery.category = null
-  gallery.folder = null
-  gallery.page = 1
-  await gallery.loadCategories()
-  await gallery.loadVideos()
-  await album.loadAlbums()
-  ui.showToast(t('settings.library.deleted'))
+  try {
+    await deleteLibrary(id)
+    await library.loadLibraries()
+    gallery.clearFolderCaches()
+    gallery.category = null
+    gallery.folder = null
+    gallery.page = 1
+    await gallery.loadCategories()
+    await gallery.loadVideos()
+    await album.loadAlbums()
+    ui.showToast(t('settings.library.deleted'))
+  } catch (e) {
+    const msg = (e as { message?: string })?.message || String(e)
+    ui.showToast(t('settings.library.deleteFailed', { msg }), 'error')
+  }
 }
 
 async function onClearHistory() {
@@ -271,57 +320,76 @@ watch(tab, (t) => {
           <div class="settings-body">
             <!-- 视频库 -->
             <template v-if="tab === 'library'">
-              <section class="settings-block">
+              <section class="settings-block space-y-4">
                 <h3 class="settings-block-title">{{ t('settings.libraryManage') }}</h3>
-                <p class="settings-subtitle">{{ t('settings.existingLibraries') }}</p>
-                <div v-if="library.libraries.length" class="lib-table">
-                  <div class="lib-table-head">
-                    <span>{{ t('settings.library.alias') }}</span>
-                    <span>{{ t('settings.library.path') }}</span>
-                    <span class="lib-col-actions">{{ t('settings.actions') }}</span>
+
+                <!-- 类型说明（并排双卡） -->
+                <div class="grid gap-3 md:grid-cols-2">
+                  <div class="flex items-start gap-2.5 rounded-lg border border-[var(--lg-border)] bg-[var(--lg-bg-card)] p-3">
+                    <span class="shrink-0 rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-hover)] px-2 py-0.5 text-xs font-semibold text-[var(--lg-text-primary)]">{{ t('settings.library.typeTitle') }}</span>
+                    <p class="text-xs leading-relaxed text-[var(--lg-text-secondary)]">{{ t('settings.library.typeHintTitle') }}</p>
                   </div>
-                  <div class="lib-table-body">
-                    <div v-for="lib in library.libraries" :key="lib.id" class="lib-table-row">
-                      <input v-model="lib.alias" class="settings-input settings-input--compact" />
-                      <div class="lib-path-cell">
-                        <input v-model="lib.path" class="settings-input settings-input--compact" />
+                  <div class="flex items-start gap-2.5 rounded-lg border border-[var(--lg-accent)]/40 bg-[var(--lg-accent)]/[0.07] p-3">
+                    <span class="shrink-0 rounded-md border border-[var(--lg-accent)]/50 bg-[var(--lg-accent)]/15 px-2 py-0.5 text-xs font-semibold text-[var(--lg-accent)]">{{ t('settings.library.typeId') }}</span>
+                    <p class="text-xs leading-relaxed text-[var(--lg-text-secondary)]">{{ t('settings.library.typeHintId') }}</p>
+                  </div>
+                </div>
+
+                <p class="settings-subtitle">{{ t('settings.existingLibraries') }}</p>
+                <div v-if="library.libraries.length" class="overflow-hidden rounded-lg border border-[var(--lg-border)]">
+                  <div class="grid grid-cols-[9rem_13rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--lg-border)] bg-[var(--lg-bg-secondary)] px-3.5 py-2 text-[0.6875rem] uppercase tracking-wider text-[var(--lg-text-muted)]">
+                    <span>{{ t('settings.library.alias') }}</span>
+                    <span>{{ t('settings.library.type') }}</span>
+                    <span>{{ t('settings.library.path') }}</span>
+                    <span class="text-right">{{ t('settings.actions') }}</span>
+                  </div>
+                  <div class="divide-y divide-[var(--lg-border)]">
+                    <div v-for="lib in library.libraries" :key="lib.id" class="grid grid-cols-[9rem_13rem_minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-[var(--lg-bg-hover)]">
+                      <input v-model="lib.alias" class="min-w-0 rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-2 py-1.5 text-sm font-semibold text-[var(--lg-text-primary)] outline-none transition-colors focus:border-[var(--lg-accent)]" :placeholder="t('settings.library.alias')" />
+                      <div class="inline-flex w-fit overflow-hidden rounded-md border border-[var(--lg-border)]">
+                        <label class="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-xs transition-colors" :class="lib.library_type === 'title-based' ? 'bg-[var(--lg-accent)] text-[var(--lg-text-on-accent)]' : 'text-[var(--lg-text-muted)] hover:bg-[var(--lg-bg-hover)]'">
+                          <input type="radio" :value="'title-based'" v-model="lib.library_type" :name="'lib-type-' + lib.id" class="sr-only" />
+                          <span>{{ t('settings.library.typeTitle') }}</span>
+                        </label>
+                        <label class="flex cursor-pointer items-center gap-1.5 border-l border-[var(--lg-border)] px-2.5 py-1.5 text-xs transition-colors" :class="lib.library_type === 'id-based' ? 'bg-[var(--lg-accent)] text-[var(--lg-text-on-accent)]' : 'text-[var(--lg-text-muted)] hover:bg-[var(--lg-bg-hover)]'">
+                          <input type="radio" :value="'id-based'" v-model="lib.library_type" :name="'lib-type-' + lib.id" class="sr-only" />
+                          <span>{{ t('settings.library.typeId') }}</span>
+                        </label>
                       </div>
-                      <div class="lib-col-actions">
-                        <button type="button" class="settings-btn" @click="saveLibraryRow(lib)">{{ t('common.save') }}</button>
-                        <button
-                          type="button"
-                          class="settings-btn settings-btn--danger"
-                          @click="onRemoveLibrary(lib.id, lib.alias)"
-                        >
-                          {{ t('common.delete') }}
-                        </button>
+                      <div class="flex min-w-0 items-center gap-2">
+                        <input v-model="lib.path" :title="lib.path" class="min-w-0 flex-1 truncate rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-2 py-1.5 font-mono text-xs text-[var(--lg-text-primary)] outline-none transition-colors focus:border-[var(--lg-accent)]" />
+                        <button type="button" class="shrink-0 rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-hover)] px-2.5 py-1.5 text-xs text-[var(--lg-text-secondary)] transition-colors hover:bg-[var(--lg-bg-active)]" @click="pickLibPath(lib)">{{ t('settings.library.browse') }}</button>
+                      </div>
+                      <div class="flex justify-end gap-2">
+                        <button type="button" class="rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-hover)] px-2.5 py-1.5 text-xs text-[var(--lg-text-primary)] transition-colors hover:bg-[var(--lg-bg-active)]" @click="saveLibraryRow(lib)">{{ t('common.save') }}</button>
+                        <button type="button" class="rounded-md border border-[var(--lg-danger-border)] bg-[var(--lg-danger-bg)] px-2.5 py-1.5 text-xs text-[var(--lg-danger)] transition-colors hover:opacity-80" @click="onRemoveLibrary(lib.id, lib.alias)">{{ t('common.delete') }}</button>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div v-else class="lib-empty">{{ t('settings.emptyLibraries') }}</div>
+                <div v-else class="rounded-lg border border-dashed border-[var(--lg-border)] p-6 text-center text-sm text-[var(--lg-text-muted)]">{{ t('settings.emptyLibraries') }}</div>
 
                 <p class="settings-subtitle" style="margin-top: 1rem">{{ t('settings.addLibraryTitle') }}</p>
-                <div class="lib-table-row lib-add-row">
-                  <input
-                    v-model="newLib.alias"
-                    :placeholder="t('settings.library.alias')"
-                    class="settings-input settings-input--compact"
-                    autocomplete="off"
-                  />
-                  <div class="lib-path-cell">
-                    <input
-                      v-model="newLib.path"
-                      :placeholder="t('settings.library.path')"
-                      class="settings-input settings-input--compact"
-                      autocomplete="off"
-                    />
-                    <button type="button" class="settings-btn" @click="pickPath">{{ t('settings.library.browse') }}</button>
-                  </div>
-                  <div class="lib-col-actions">
-                    <button type="button" class="settings-btn settings-btn--primary" @click="addLibrary">
-                      {{ t('settings.library.add') }}
-                    </button>
+                <div class="rounded-lg border border-[var(--lg-border)] bg-[var(--lg-bg-card)] p-3.5">
+                  <div class="grid grid-cols-[9rem_13rem_minmax(0,1fr)_auto] items-center gap-3">
+                    <input v-model="newLib.alias" :placeholder="t('settings.library.alias')" autocomplete="off" class="min-w-0 rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-2 py-1.5 text-sm font-semibold text-[var(--lg-text-primary)] outline-none transition-colors focus:border-[var(--lg-accent)]" />
+                    <div class="inline-flex w-fit overflow-hidden rounded-md border border-[var(--lg-border)]">
+                      <label class="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-xs transition-colors" :class="newLib.library_type === 'title-based' ? 'bg-[var(--lg-accent)] text-[var(--lg-text-on-accent)]' : 'text-[var(--lg-text-muted)] hover:bg-[var(--lg-bg-hover)]'">
+                        <input type="radio" value="title-based" v-model="newLib.library_type" name="new-lib-type" class="sr-only" />
+                        <span>{{ t('settings.library.typeTitle') }}</span>
+                      </label>
+                      <label class="flex cursor-pointer items-center gap-1.5 border-l border-[var(--lg-border)] px-2.5 py-1.5 text-xs transition-colors" :class="newLib.library_type === 'id-based' ? 'bg-[var(--lg-accent)] text-[var(--lg-text-on-accent)]' : 'text-[var(--lg-text-muted)] hover:bg-[var(--lg-bg-hover)]'">
+                        <input type="radio" value="id-based" v-model="newLib.library_type" name="new-lib-type" class="sr-only" />
+                        <span>{{ t('settings.library.typeId') }}</span>
+                      </label>
+                    </div>
+                    <div class="flex min-w-0 items-center gap-2">
+                      <input v-model="newLib.path" :placeholder="t('settings.library.path')" autocomplete="off" class="min-w-0 flex-1 rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-2 py-1.5 font-mono text-xs text-[var(--lg-text-primary)] outline-none transition-colors focus:border-[var(--lg-accent)]" />
+                      <button type="button" class="shrink-0 rounded-md border border-[var(--lg-border)] bg-[var(--lg-bg-hover)] px-2.5 py-1.5 text-xs text-[var(--lg-text-secondary)] transition-colors hover:bg-[var(--lg-bg-active)]" @click="pickPath">{{ t('settings.library.browse') }}</button>
+                    </div>
+                    <div class="flex justify-end">
+                      <button type="button" class="rounded-md bg-[var(--lg-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--lg-text-on-accent)] transition-colors hover:brightness-110" @click="addLibrary">{{ t('settings.library.add') }}</button>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -373,13 +441,6 @@ watch(tab, (t) => {
                     </select>
                   </label>
                   <label class="settings-field">
-                    <span class="settings-field-label">{{ t('settings.pinMode') }}</span>
-                    <select v-model="form.html5_hover_tip_pin" class="settings-input">
-                      <option :value="true">{{ t('settings.pinOn') }}</option>
-                      <option :value="false">{{ t('settings.pinOff') }}</option>
-                    </select>
-                  </label>
-                  <label class="settings-field">
                     <span class="settings-field-label">{{ t('settings.seekPreview') }}</span>
                     <select v-model="form.html5_seek_preview" class="settings-input">
                       <option :value="true">{{ t('settings.seekPreviewOn') }}</option>
@@ -421,46 +482,6 @@ watch(tab, (t) => {
                         type="number"
                         min="0"
                         max="120"
-                        class="settings-input"
-                      />
-                      <span class="settings-unit">{{ t('settings.sec') }}</span>
-                    </div>
-                  </label>
-                  <label class="settings-field">
-                    <span class="settings-field-label">{{ t('settings.hoverPreview') }}</span>
-                    <select v-model="form.html5_hover_preview" class="settings-input">
-                      <option :value="true">{{ t('settings.hoverPreviewOn') }}</option>
-                      <option :value="false">{{ t('settings.hoverPreviewOff') }}</option>
-                    </select>
-                  </label>
-                  <label v-if="form.html5_hover_preview" class="settings-field">
-                    <span class="settings-field-label">{{ t('settings.hoverPreviewMode') }}</span>
-                    <select v-model="form.html5_hover_preview_mode" class="settings-input">
-                      <option value="video">{{ t('settings.hoverPreviewModeVideo') }}</option>
-                      <option value="thumb">{{ t('settings.hoverPreviewModeThumb') }}</option>
-                    </select>
-                  </label>
-                  <label class="settings-field">
-                    <span class="settings-field-label">{{ t('settings.segments') }}</span>
-                    <div class="settings-unit-row">
-                      <input
-                        v-model.number="form.html5_hover_preview_segments"
-                        type="number"
-                        min="1"
-                        max="10"
-                        class="settings-input"
-                      />
-                      <span class="settings-unit">{{ t('settings.unit') }}</span>
-                    </div>
-                  </label>
-                  <label class="settings-field">
-                    <span class="settings-field-label">{{ t('settings.segmentSec') }}</span>
-                    <div class="settings-unit-row">
-                      <input
-                        v-model.number="form.html5_hover_preview_segment_sec"
-                        type="number"
-                        min="1"
-                        max="15"
                         class="settings-input"
                       />
                       <span class="settings-unit">{{ t('settings.sec') }}</span>
@@ -548,6 +569,53 @@ watch(tab, (t) => {
               </section>
 
               <section class="settings-block">
+                <h3 class="settings-block-title">{{ t('settings.hoverPreviewSection') }}</h3>
+                <div class="settings-grid settings-grid--2">
+                  <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.hoverPreviewMode') }}</span>
+                    <select v-model="hoverPreviewOption" class="settings-input">
+                      <option value="off">{{ t('settings.hoverPreviewOff') }}</option>
+                      <option value="video">{{ t('settings.hoverPreviewModeVideo') }}</option>
+                      <option value="thumb">{{ t('settings.hoverPreviewModeThumb') }}</option>
+                    </select>
+                  </label>
+                  <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.pinMode') }}</span>
+                    <select v-model="form.html5_hover_tip_pin" class="settings-input">
+                      <option :value="true">{{ t('settings.pinOn') }}</option>
+                      <option :value="false">{{ t('settings.pinOff') }}</option>
+                    </select>
+                  </label>
+                  <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.segments') }}</span>
+                    <div class="settings-unit-row">
+                      <input
+                        v-model.number="form.html5_hover_preview_segments"
+                        type="number"
+                        min="1"
+                        max="10"
+                        class="settings-input"
+                      />
+                      <span class="settings-unit">{{ t('settings.unit') }}</span>
+                    </div>
+                  </label>
+                  <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.segmentSec') }}</span>
+                    <div class="settings-unit-row">
+                      <input
+                        v-model.number="form.html5_hover_preview_segment_sec"
+                        type="number"
+                        min="1"
+                        max="15"
+                        class="settings-input"
+                      />
+                      <span class="settings-unit">{{ t('settings.sec') }}</span>
+                    </div>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-block">
                 <h3 class="settings-block-title">{{ t('settings.maintenance') }}</h3>
                 <div class="flex flex-wrap items-center gap-3">
                   <span class="settings-field-hint">
@@ -555,6 +623,27 @@ watch(tab, (t) => {
                   </span>
                   <button type="button" class="settings-btn" @click="onCleanupThumbs">{{ t('settings.cleanupBtn') }}</button>
                 </div>
+              </section>
+            </template>
+
+            <!-- 标签 -->
+            <template v-else-if="tab === 'tag'">
+              <section class="settings-block">
+                <h3 class="settings-block-title">{{ t('settings.tagGen') }}</h3>
+                <div class="settings-grid">
+                  <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.tagAlbumMin') }}</span>
+                    <input
+                      v-model.number="form.tag_album_min_videos"
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      class="settings-input"
+                    />
+                  </label>
+                </div>
+                <p class="settings-hint">{{ t('settings.tagAlbumMinHint') }}</p>
               </section>
             </template>
 

@@ -158,7 +158,7 @@ async function onContextAction(ev: Event) {
     <AppHeader />
 
     <div class="flex min-h-0 flex-1">
-      <CategorySidebar v-if="settings.preset === 'youtube'" />
+      <CategorySidebar v-if="settings.preset === 'classic'" />
       <main class="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
 
       <button class="mb-4 shrink-0 self-start text-sm text-[var(--lg-text-muted)] hover:text-[var(--lg-text-primary)]" @click="router.push('/albums')">

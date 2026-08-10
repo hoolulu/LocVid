@@ -33,14 +33,17 @@ export const pickFolder = () =>
     libraryId: null,
   })
 
-export const createLibrary = (alias: string, path: string) =>
+export const createLibrary = (alias: string, path: string, libraryType = 'title-based') =>
   api('/libraries', {
     method: 'POST',
-    body: JSON.stringify({ alias, path }),
+    body: JSON.stringify({ alias, path, library_type: libraryType }),
     libraryId: null,
   })
 
-export const updateLibrary = (id: string, data: { alias?: string; path?: string }) =>
+export const updateLibrary = (
+  id: string,
+  data: { alias?: string; path?: string; library_type?: string },
+) =>
   api(`/libraries/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(data),

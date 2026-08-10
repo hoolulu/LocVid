@@ -6,10 +6,10 @@ export const getAlbums = () => api<{ items: Album[] }>('/albums')
 export const getAlbum = (id: string) =>
   api<Album & { total_duration_sec?: number }>(`/albums/${id}`)
 
-export const createAlbum = (name: string, description = '') =>
+export const createAlbum = (name: string, description = '', tag?: string) =>
   api<{ ok: boolean; album: Album }>('/albums', {
     method: 'POST',
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify({ name, description, tag }),
   })
 
 export const updateAlbum = (id: string, data: Partial<Album>) =>

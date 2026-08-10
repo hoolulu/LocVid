@@ -38,6 +38,8 @@
   --lg-shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.6);
   --lg-radius: 6px;
   --lg-danger: #ff4444;
+  --lg-danger-border: rgba(255, 68, 68, 0.4);
+  --lg-danger-bg: rgba(255, 68, 68, 0.1);
   --lg-sidebar-width: 240px;
   --lg-icon-sidebar-width: 72px;
   --lg-player-bar-height: 72px;
@@ -120,14 +122,14 @@
   background: transparent;
 }
 
-/* ── Netflix 预设 ── */
-[data-preset="netflix"] {
+/* ── 影院预设 ── */
+[data-preset="cinema"] {
   --lg-accent: #e50914;
   --lg-accent-hover: #f40612;
   --lg-accent-muted: rgba(229, 9, 20, 0.15);
   --lg-radius: 4px;
 }
-[data-preset="netflix"][data-theme="dark"] {
+[data-preset="cinema"][data-theme="dark"] {
   --lg-bg: #000000;
   --lg-bg-elevated: #141414;
   --lg-bg-secondary: #181818;
@@ -135,7 +137,7 @@
   --lg-bg-sidebar: #000000;
   --lg-bg-header: #000000;
 }
-[data-preset="netflix"][data-theme="light"] {
+[data-preset="cinema"][data-theme="light"] {
   --lg-bg: #ffffff;
   --lg-bg-elevated: #ffffff;
   --lg-bg-secondary: #f5f5f5;
@@ -150,29 +152,29 @@
   --lg-shadow-card-hover: 0 6px 20px rgba(0, 0, 0, 0.14);
 }
 
-/* ── YouTube 预设 ── */
-[data-preset="youtube"] {
+/* ── 经典预设 ── */
+[data-preset="classic"] {
   --lg-accent: #ff0000;
   --lg-accent-hover: #cc0000;
   --lg-accent-muted: rgba(255, 0, 0, 0.1);
   --lg-radius: 8px;
 }
-[data-preset="youtube"][data-theme="dark"] {
+[data-preset="classic"][data-theme="dark"] {
   --lg-bg: #0f0f0f;
   --lg-bg-secondary: #0f0f0f;
   --lg-bg-sidebar: #0f0f0f;
 }
-[data-preset="youtube"][data-theme="light"] {
+[data-preset="classic"][data-theme="light"] {
   --lg-bg: #ffffff;
   --lg-bg-secondary: #f9f9f9;
   --lg-bg-sidebar: #ffffff;
 }
 
 /* ── 影院布局：轻微放大，经典模式仅用阴影避免布局抖动 ── */
-[data-preset="netflix"] .video-card {
+[data-preset="cinema"] .video-card {
   transition: transform 0.2s, box-shadow 0.2s;
 }
-[data-preset="netflix"] .video-card:hover {
+[data-preset="cinema"] .video-card:hover {
   transform: scale(1.03);
   z-index: 2;
   box-shadow: var(--lg-shadow-card-hover);
@@ -589,6 +591,10 @@ body {
   width: 1.15rem;
   height: 1.15rem;
   flex-shrink: 0;
+}
+.lg-toast--error {
+  background: var(--lg-danger, #ff4444);
+  color: #ffffff;
 }
 @keyframes lg-toast-in {
   from {
@@ -1102,26 +1108,41 @@ body.manage-mode .card-album-badge {
   border: 1px solid var(--lg-thumb-overlay-border);
   text-shadow: var(--lg-thumb-overlay-shadow);
 }
-/* 可播放但不支持悬停预览（伪装TS/MKV/HEVC 等）：预览区位置居中提示 */
+/* 可播放但不支持悬停预览（伪装TS/MKV/HEVC 等）：底部缩略图 + 中央醒目徽标 */
+/* 容器跟随图片尺寸（width:fit-content 由 .path-tip-preview 提供），img 复用通配样式保持原图大小 */
 .path-tip-preview--unsupported {
-  width: min(72vw, 768px);
-  height: min(40vh, 432px);
-  max-width: min(88vw, 1104px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--lg-text-secondary);
+  position: relative;
+  display: inline-block;
   background: var(--lg-bg-secondary);
   border-radius: 8px 8px 0 0;
 }
-.path-tip-preview--unsupported-icon {
-  font-size: 1.4rem;
-  color: var(--lg-accent);
-  opacity: 0.85;
+.path-tip-preview--unsupported-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(72vw, 768px);
+  height: min(40vh, 432px);
+  color: var(--lg-text-muted);
+  font-size: 0.85rem;
+}
+.path-tip-preview--unsupported-badge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  max-width: 85%;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 8px 16px;
+  border-radius: 8px;
+  text-align: center;
+  color: var(--lg-thumb-overlay-text);
+  background: var(--lg-thumb-overlay-bg);
+  border: 1px solid var(--lg-thumb-overlay-border);
+  box-shadow: var(--lg-thumb-overlay-shadow);
+  backdrop-filter: blur(2px);
 }
 .path-tip-body {
   padding: 10px 12px 12px;
@@ -1153,6 +1174,18 @@ body.manage-mode .card-album-badge {
   row-gap: 2px;
 }
 .path-tip-chip + .path-tip-chip::before {
+  content: "  ·  ";
+  color: var(--lg-text-muted);
+  opacity: 0.55;
+}
+/* 标签 chip：与元信息 chip 区分，加主题色 */
+.path-tip-chip--tag {
+  color: #60a5fa;
+}
+.path-tip-chip--tag::before {
+  content: none;
+}
+.path-tip-chip--tag + .path-tip-chip--tag::before {
   content: "  ·  ";
   color: var(--lg-text-muted);
   opacity: 0.55;
@@ -1238,6 +1271,17 @@ body.manage-mode .card-album-badge {
 }
 .thumb-picker-item:disabled {
   opacity: 0.6;
+}
+
+/* 右键菜单：隐藏滚动条但保留滚动能力 */
+.context-menu {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.context-menu::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* ── 设置对话框 ── */
@@ -1421,58 +1465,6 @@ body.manage-mode .card-album-badge {
   white-space: nowrap;
 }
 
-/* 视频库表格 */
-.lib-table {
-  width: 100%;
-}
-.lib-table-head,
-.lib-table-row {
-  display: grid;
-  grid-template-columns: 6.5rem minmax(0, 1fr) auto;
-  gap: 0.5rem;
-  align-items: center;
-}
-.lib-table-head {
-  padding: 0 0 0.35rem;
-  font-size: 0.6875rem;
-  color: var(--lg-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.lib-table-body .lib-table-row {
-  padding: 0.35rem 0;
-  border-bottom: 1px solid var(--lg-border);
-}
-.lib-table-body .lib-table-row:last-child {
-  border-bottom: none;
-}
-.lib-path-cell {
-  display: flex;
-  gap: 0.35rem;
-  min-width: 0;
-}
-.lib-path-cell .settings-input {
-  flex: 1;
-  min-width: 0;
-}
-.lib-col-actions {
-  display: flex;
-  gap: 0.35rem;
-  justify-content: flex-end;
-  white-space: nowrap;
-}
-.lib-add-row {
-  padding-top: 0.5rem;
-}
-.lib-empty {
-  padding: 1.5rem;
-  text-align: center;
-  font-size: 0.8125rem;
-  color: var(--lg-text-muted);
-  border: 1px dashed var(--lg-border);
-  border-radius: 8px;
-}
-
 /* 播放器舞台：视频始终撑满可用区域 */
 .player-view {
   overflow: hidden;
@@ -1494,7 +1486,7 @@ body.manage-mode .card-album-badge {
   flex-shrink: 0;
   gap: 0.35rem;
 }
-/* 左上角悬浮返回按钮：默认隐藏，鼠标悬停在播放区域时淡入（Netflix/YouTube 标准交互） */
+/* 左上角悬浮返回按钮：默认隐藏，鼠标悬停在播放区域时淡入（影院/经典预设标准交互） */
 .player-back-top {
   position: absolute;
   top: 14px;

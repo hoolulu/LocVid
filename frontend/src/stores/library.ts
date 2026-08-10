@@ -13,7 +13,11 @@ export const useLibraryStore = defineStore('library', () => {
     loading.value = true
     try {
       const data = await getLibraries()
-      libraries.value = data.items
+      // 旧库无 library_type 字段时归一为默认「标题影片库」，保证下拉正确选中
+      libraries.value = (data.items || []).map((lib) => ({
+        ...lib,
+        library_type: lib.library_type === 'id-based' ? 'id-based' : 'title-based',
+      }))
       activeLibraryId.value = data.active_library_id
       setActiveLibraryId(data.active_library_id)
     } finally {

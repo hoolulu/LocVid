@@ -56,6 +56,8 @@ function positionTip(tipW: number, tipH: number) {
 
 function scheduleShow(video: Video, anchor: HTMLElement, playlist = false) {
   if (!video.path) return
+  // 悬停预览关闭时整个浮层不显示（含缩略图）
+  if (useSettingsStore().settings?.html5_hover_preview === false) return
   // 钉住模式下浮层保留，不随新卡片 hover 更新（需先点关闭）
   if (pinned.value) return
   if (anchorEl === anchor && visible.value) return

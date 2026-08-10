@@ -37,10 +37,12 @@ export function setSavedBrowseState(state: BrowseState) {
 }
 
 export const DEFAULT_THEME: 'light' | 'dark' = 'light'
-export const DEFAULT_PRESET: ThemePreset = 'youtube'
+export const DEFAULT_PRESET: ThemePreset = 'classic'
 
 export function normalizePreset(value: string | null | undefined): ThemePreset {
-  return value === 'netflix' ? 'netflix' : 'youtube'
+  // 兼容旧值：netflix→cinema(影院)、youtube/spotify→classic(经典)
+  if (value === 'cinema' || value === 'netflix') return 'cinema'
+  return 'classic'
 }
 
 export function getSavedTheme(): 'light' | 'dark' {

@@ -93,6 +93,17 @@ from loc_gallery.favorite_store import (
     remove_favorites,
     toggle_favorite,
 )
+from loc_gallery.tag_store import (
+    add_tags,
+    get_tags_map,
+    get_video_tags,
+    import_tags,
+    list_all_tags,
+    prune_missing as prune_tags,
+    remove_tag,
+    set_video_tags,
+)
+from loc_gallery.auto_tag import analyze_filename
 from loc_gallery.album_store import (
     add_videos as album_add_videos,
     create_album,
@@ -279,6 +290,7 @@ class FavoriteBatchRequest(BaseModel):
 class AlbumCreateRequest(BaseModel):
     name: str
     description: str | None = None
+    tag: str | None = None
 
 
 class AlbumUpdateRequest(BaseModel):
@@ -327,6 +339,7 @@ class SettingsUpdate(BaseModel):
     html5_disable_movi_hotkeys: bool | None = None
     html5_hover_preview: bool | None = None
     html5_hover_preview_mode: str | None = None  # video | thumb
+    tag_album_min_videos: int | None = None
     html5_hover_preview_segments: int | None = None
     html5_hover_preview_segment_sec: int | None = None
     html5_hover_tip_pin: bool | None = None
@@ -339,11 +352,13 @@ class SettingsUpdate(BaseModel):
 class LibraryCreateRequest(BaseModel):
     alias: str
     path: str
+    library_type: str = "title-based"
 
 
 class LibraryUpdateRequest(BaseModel):
     alias: str | None = None
     path: str | None = None
+    library_type: str | None = None
 
 
 class LibraryDeleteRequest(BaseModel):
@@ -469,13 +484,65 @@ def _cancel_refresh_timers() -> None:
         _refresh_timers.clear()
 
 
+def _is_id_based_library(library_id: str) -> bool:
+    """库是否「编号影片库」（id-based）：新视频自动命名+打标+进标签专辑。
+    默认 title-based（标题影片库）：新视频仅基础入库，不改名不打标。"""
+    try:
+        lib = get_library(library_id)
+        return bool(lib and lib.library_type == "id-based")
+    except Exception:
+        return False
+
+
 def _on_video_stable(library_id: str, path: Path) -> None:
-    """单个文件写入稳定后增量入库（新下载完成）。"""
+    """单个文件写入稳定后增量入库（新下载完成）。
+
+    自动管道：信息快照 → [编号影片库]幂等命名+追加打标 → 正常缩略图/时长流程。
+    - 标题影片库（默认）：只做基础入库，不修改文件名、不自动打标
+    - auto_name 幂等（改名后重跑返回"已规范"）+ 防 watchdog 递归
+    - auto_tag 只追加不覆盖手动标签
+    """
     set_thread_library(library_id)
     item = upsert_video_from_path(library_id, path)
     if not item:
         _on_library_changed(library_id)
         return
+    if _is_id_based_library(library_id):
+        # ① 自动命名（幂等）：新下载的裸文件名 → 规范名；已规范/不可识别则不动
+        # 分析仅做一次：原始文件名信息最全，改名后再分析会丢掉已被规范名去除的
+        # 题材/来源词（如 [SpankBang] HMN-531 中出 → HMN-531），导致标签缺失
+        try:
+            analysis = analyze_filename(item.filename)
+        except Exception:
+            analysis = {"suggested_name": None, "tags": []}
+        suggested = analysis.get("suggested_name")
+        if suggested and suggested != item.filename:
+            try:
+                from loc_gallery.file_ops import _sanitize_name, _migrate_video_id
+                from loc_gallery.scanner import refresh_cache
+
+                # 防重入 + 幂等：只有建议名确实不同才改名（改名后重跑会返回已规范）
+                src = Path(item.path)
+                dst = src.with_name(suggested)
+                if not dst.exists():
+                    safe = _sanitize_name(suggested)
+                    if safe and safe != src.stem:
+                        old_id = item.id
+                        src.rename(dst)
+                        _migrate_video_id(library_id, old_id, dst)
+                        refresh_cache(library_id)
+                        new_item = upsert_video_from_path(library_id, dst)
+                        if new_item:
+                            item = new_item
+            except Exception:
+                # 自动命名失败绝不影响入库主流程
+                pass
+        # ② 自动打标（追加式，不覆盖手动标签）
+        try:
+            if analysis.get("tags"):
+                add_tags(library_id, item.id, analysis["tags"])
+        except Exception:
+            pass
     reconcile_deferred_thumbs()
     changed_ids = sync_index_with_videos()
     thumb_ids = [item.id]
@@ -677,6 +744,7 @@ def _prune_user_data(library_id: str) -> None:
     prune_favorites(library_id, valid)
     prune_history(library_id, valid)
     prune_albums(library_id, valid)
+    prune_tags(library_id, valid)
 
 
 def _video_to_dict(library_id: str, v, *, album_ids: list[str] | None = None) -> dict:
@@ -707,6 +775,7 @@ def _video_to_dict(library_id: str, v, *, album_ids: list[str] | None = None) ->
         "playPosition": hist.get("position_sec") if hist else None,
         "playDuration": hist.get("duration_sec") if hist else None,
         "durationSec": duration,
+        "tags": get_video_tags(library_id, v.id),
         "albumIds": album_ids if album_ids is not None else get_album_ids_for_video(library_id, v.id),
         "formatBadge": get_format_badge_for_item(
             library_id, v.id, v.mtime, v.size, Path(v.path),
@@ -727,6 +796,7 @@ def _videos_to_dicts(
         return []
     fav_map = get_favorites_map(library_id)
     hist_map = get_history_map(library_id)
+    tag_map = get_tags_map(library_id)
     thumb_index, generating, queued = snapshot_thumb_list_state(library_id)
     out: list[dict] = []
     for v in items:
@@ -765,6 +835,7 @@ def _videos_to_dicts(
             "playPosition": hist.get("position_sec") if hist else None,
             "playDuration": hist.get("duration_sec") if hist else None,
             "durationSec": duration,
+            "tags": tag_map.get(v.id, []),
             "albumIds": album_map.get(v.id, []),
             "formatBadge": get_format_badge_for_item(
                 library_id, v.id, v.mtime, v.size, Path(v.path),
@@ -1037,7 +1108,7 @@ async def api_libraries_list():
 @app.post("/api/libraries")
 async def api_libraries_create(req: LibraryCreateRequest):
     try:
-        lib = add_library(req.alias, req.path)
+        lib = add_library(req.alias, req.path, library_type=req.library_type)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     set_thread_library(lib.id)
@@ -1050,7 +1121,7 @@ async def api_libraries_create(req: LibraryCreateRequest):
 @app.patch("/api/libraries/{library_id}")
 async def api_libraries_update(library_id: str, req: LibraryUpdateRequest):
     try:
-        lib = update_library(library_id, alias=req.alias, path=req.path)
+        lib = update_library(library_id, alias=req.alias, path=req.path, library_type=req.library_type)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     set_thread_library(lib.id)
@@ -1527,6 +1598,66 @@ async def api_favorites_clear(library_id: str = Depends(resolve_library_id)):
     return {"ok": True, "removed": removed, "count": 0}
 
 
+# ── 标签 API ──────────────────────────────────────────────
+class TagSetRequest(BaseModel):
+    tags: list[str] = []
+
+
+class TagAddRequest(BaseModel):
+    tags: list[str] = []
+
+
+@app.get("/api/tags")
+async def api_tags_list(library_id: str = Depends(resolve_library_id)):
+    """标签列表 + 每个标签的视频数（供标签专辑/筛选用）。"""
+    return {"items": list_all_tags(library_id)}
+
+
+@app.get("/api/tags/{tag}/videos")
+async def api_tag_videos(tag: str, library_id: str = Depends(resolve_library_id)):
+    """返回打了指定标签的视频 id 列表。"""
+    from loc_gallery.tag_store import get_videos_by_tag
+    return {"tag": tag, "video_ids": get_videos_by_tag(library_id, tag)}
+
+
+@app.get("/api/videos/{video_id}/tags")
+async def api_video_tags_get(video_id: str, library_id: str = Depends(resolve_library_id)):
+    return {"video_id": video_id, "tags": get_video_tags(library_id, video_id)}
+
+
+@app.put("/api/videos/{video_id}/tags")
+async def api_video_tags_set(
+    video_id: str, req: TagSetRequest, library_id: str = Depends(resolve_library_id)
+):
+    """整组覆盖（手动打标）。"""
+    if not get_by_id(library_id, video_id):
+        raise HTTPException(404, "视频不存在")
+    tags = set_video_tags(library_id, video_id, req.tags)
+    _broadcast("progress", library_id)
+    return {"ok": True, "video_id": video_id, "tags": tags}
+
+
+@app.post("/api/videos/{video_id}/tags")
+async def api_video_tags_add(
+    video_id: str, req: TagAddRequest, library_id: str = Depends(resolve_library_id)
+):
+    """追加标签（自动打标用）。"""
+    if not get_by_id(library_id, video_id):
+        raise HTTPException(404, "视频不存在")
+    tags = add_tags(library_id, video_id, req.tags)
+    _broadcast("progress", library_id)
+    return {"ok": True, "video_id": video_id, "tags": tags}
+
+
+@app.delete("/api/videos/{video_id}/tags/{tag}")
+async def api_video_tags_remove(
+    video_id: str, tag: str, library_id: str = Depends(resolve_library_id)
+):
+    tags = remove_tag(library_id, video_id, tag)
+    _broadcast("progress", library_id)
+    return {"ok": True, "video_id": video_id, "tags": tags}
+
+
 @app.get("/api/data/export")
 async def api_data_export(library_id: str = Depends(resolve_library_id)):
     """导出用户数据（收藏/历史/专辑/分类元数据/全局设置），备份与迁移用。"""
@@ -1578,7 +1709,7 @@ async def api_albums_list(library_id: str = Depends(resolve_library_id)):
 @app.post("/api/albums")
 async def api_albums_create(req: AlbumCreateRequest, library_id: str = Depends(resolve_library_id)):
     try:
-        album = create_album(library_id, req.name, description=req.description or "")
+        album = create_album(library_id, req.name, description=req.description or "", tag=req.tag)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"ok": True, "album": album}
@@ -1928,6 +2059,14 @@ async def api_videos_rename(req: RenameRequest, library_id: str = Depends(resolv
         # 用户数据/缩略图迁移已在 file_ops.rename_video 内完成（refresh_cache 之前，防 watchdog prune 竞态）；
         # _after_file_change 不传 old_ids，避免删除旧 id 的收藏/历史/专辑
         _after_file_change(library_id)
+        # 手动改名后重跑自动打标（仅编号影片库）：追加新文件名可识别出的标签，不覆盖已有（含手动标签）
+        if _is_id_based_library(library_id):
+            try:
+                analysis = analyze_filename(item.filename)
+                if analysis.get("tags"):
+                    add_tags(library_id, item.id, analysis["tags"])
+            except Exception:
+                pass
         # 强制同步 probe 格式，跳过稳定性检查，使筛选立即生效
         from pathlib import Path
         p = Path(item.path)

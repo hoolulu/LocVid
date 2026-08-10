@@ -43,11 +43,13 @@ def _migrate_video_id(library_id: str, old_id: str, new_path: Path) -> str | Non
     from loc_gallery.album_store import migrate_video_id as _ma
     from loc_gallery.thumb_manager import migrate_thumb_id as _mt
     from loc_gallery.format_index import migrate_id as _mfi
+    from loc_gallery.tag_store import migrate_id as _mtag
     _mf(library_id, old_id, new_id)
     _mh(library_id, old_id, new_id)
     _ma(library_id, old_id, new_id)
     _mt(library_id, old_id, new_id)
     _mfi(library_id, old_id, new_id)
+    _mtag(library_id, old_id, new_id)
     return new_id
 
 

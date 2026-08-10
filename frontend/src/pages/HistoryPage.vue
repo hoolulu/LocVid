@@ -57,7 +57,7 @@ function onVideoContext(e: MouseEvent, videoId: string) {
   <div class="flex h-full min-h-0 flex-col">
     <AppHeader />
     <div class="flex min-h-0 flex-1">
-      <CategorySidebar v-if="settings.preset === 'youtube'" />
+      <CategorySidebar v-if="settings.preset === 'classic'" />
       <main class="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
         <div class="mb-4 flex shrink-0 items-center gap-3">
           <h2 class="text-lg font-medium">{{ t('history.title') }}</h2>

@@ -235,9 +235,22 @@ watch(previewRatio, () => {
         <div class="path-tip-preview--fallback">{{ t('thumb.previewFailed') }}</div>
       </template>
       <!-- 后端已判定可播放但不支持悬停预览（伪装TS/MKV/HEVC 等，原生 <video> 解不了）：
-           直接提示，不再尝试预览 -->
+           底部回退缩略图，提示醒目覆盖在图片中央 -->
       <div v-else-if="item.previewable === false" class="path-tip-preview--unsupported">
-        {{ t('thumb.previewUnsupported') }}
+        <img
+          v-if="item.thumbReady || item.thumbVersion"
+          :src="thumbUrl(item.id, item.thumbVersion)"
+          alt=""
+          decoding="async"
+          class="path-tip-preview--unsupported-img"
+          @load="onImgLoad"
+        />
+        <div v-else class="path-tip-preview--unsupported-img path-tip-preview--unsupported-placeholder">
+          {{ t('thumb.emptyHint') }}
+        </div>
+        <div class="path-tip-preview--unsupported-badge">
+          {{ t('thumb.previewUnsupported') }}
+        </div>
       </div>
       <span v-if="item.formatBadge" class="thumb-format-badge">{{ formatBadgeLabel(item.formatBadge) }}</span>
       <span v-if="item.durationSec" class="thumb-duration">{{ formatDuration(item.durationSec) }}</span>
@@ -257,6 +270,15 @@ watch(previewRatio, () => {
       </div>
       <div v-if="userChips.length" class="path-tip-meta">
         <span v-for="chip in userChips" :key="chip" class="path-tip-chip">{{ chip }}</span>
+      </div>
+      <!-- 标签行：仅当视频有标签时显示（无标签隐藏整行，不显示空标签） -->
+      <div v-if="(item.tags || []).length" class="path-tip-meta">
+        <span
+          v-for="tag in item.tags"
+          :key="tag"
+          class="path-tip-chip path-tip-chip--tag"
+          title="标签"
+        >#{{ tag }}</span>
       </div>
     </div>
   </div>

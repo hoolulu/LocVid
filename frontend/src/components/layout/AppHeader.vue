@@ -28,8 +28,8 @@ const navItems = computed(() => [
 ])
 
 const presetOptions = computed<{ value: ThemePreset; label: string }[]>(() => [
-  { value: 'netflix', label: t('toast.theme.cinema') },
-  { value: 'youtube', label: t('toast.theme.classic') },
+  { value: 'cinema', label: t('toast.theme.cinema') },
+  { value: 'classic', label: t('toast.theme.classic') },
 ])
 
 const activeNav = computed(() => route.name)

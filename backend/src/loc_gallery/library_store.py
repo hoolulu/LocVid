@@ -26,6 +26,7 @@ class Library:
     path: str
     created_at: float
     order: int
+    library_type: str = "title-based"
 
     @property
     def path_obj(self) -> Path:
@@ -41,6 +42,7 @@ class Library:
             "path": self.path,
             "created_at": self.created_at,
             "order": self.order,
+            "library_type": self.library_type,
             "exists": self.exists(),
         }
 
@@ -97,7 +99,13 @@ def _parse_library(entry: dict) -> Library | None:
         path=path,
         created_at=float(entry.get("created_at") or 0),
         order=int(entry.get("order") or 0),
+        library_type=_normalize_library_type(entry.get("library_type")),
     )
+
+
+def _normalize_library_type(raw) -> str:
+    """库类型归一：仅接受 id-based（编号影片库）或 title-based（标题影片库），非法值回落默认。"""
+    return "id-based" if (raw or "") == "id-based" else "title-based"
 
 
 def _validate_alias(alias: str) -> str:
@@ -309,7 +317,7 @@ def set_active_library(library_id: str) -> Library:
     return get_library(library_id)  # type: ignore[return-value]
 
 
-def add_library(alias: str, path: str) -> Library:
+def add_library(alias: str, path: str, *, library_type: str = "title-based") -> Library:
     alias = _validate_alias(alias)
     norm_path = _validate_path(path)
     with _lock:
@@ -323,6 +331,7 @@ def add_library(alias: str, path: str) -> Library:
             "path": norm_path,
             "created_at": time.time(),
             "order": order,
+            "library_type": _normalize_library_type(library_type),
         }
         libs.append(entry)
         if len(libs) == 1:
@@ -337,6 +346,7 @@ def update_library(
     *,
     alias: str | None = None,
     path: str | None = None,
+    library_type: str | None = None,
 ) -> Library:
     lib = get_library(library_id)
     if not lib:
@@ -350,6 +360,8 @@ def update_library(
                 entry["alias"] = _validate_alias(alias)
             if path is not None:
                 entry["path"] = _validate_path(path, exclude_id=library_id)
+            if library_type is not None:
+                entry["library_type"] = _normalize_library_type(library_type)
             _save_raw(data)
             break
     return get_library(library_id)  # type: ignore[return-value]

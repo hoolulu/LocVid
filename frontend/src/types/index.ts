@@ -5,6 +5,7 @@ export interface Library {
   created_at: number
   order: number
   exists?: boolean
+  library_type?: 'id-based' | 'title-based'
 }
 
 export interface LibrariesResponse {
@@ -60,6 +61,8 @@ export interface Video {
   formatBadge?: string
   /** 悬停预览可用性：false=可播放但不支持原生 video 预览（伪装TS/MKV/HEVC 等） */
   previewable?: boolean
+  /** 标签（自动识别 + 手动打标） */
+  tags?: string[]
 }
 
 export interface VideosResponse {
@@ -99,6 +102,13 @@ export interface Album {
   total_duration_sec?: number
   created_at: number
   updated_at: number
+  /** 标签专辑：filter.tag 非空时该专辑为动态聚合 */
+  filter?: { tag: string }
+}
+
+export interface TagInfo {
+  tag: string
+  count: number
 }
 
 export interface Settings {
@@ -125,13 +135,14 @@ export interface Settings {
   html5_disable_movi_hotkeys: boolean
   html5_hover_preview: boolean
   html5_hover_preview_mode: 'video' | 'thumb'
+  tag_album_min_videos: number
   html5_hover_preview_segments: number
   html5_hover_preview_segment_sec: number
   html5_hover_tip_pin: boolean
   html5_seek_preview: boolean
   html5_auto_remux: boolean
   ui_theme: 'dark' | 'light'
-  ui_preset?: 'netflix' | 'youtube' | 'spotify'
+  ui_preset?: 'cinema' | 'classic'
   [key: string]: unknown
 }
 

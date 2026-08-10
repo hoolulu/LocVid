@@ -22,7 +22,7 @@ const settings = useSettingsStore()
 const containerRef = ref<HTMLElement | null>(null)
 
 const columns = computed(() => GRID_COLUMNS[settings.preset])
-const rowHeight = computed(() => (settings.preset === 'netflix' ? 188 : 200))
+const rowHeight = computed(() => (settings.preset === 'cinema' ? 188 : 200))
 
 const rows = computed(() => {
   const out: Video[][] = []

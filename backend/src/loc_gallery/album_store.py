@@ -89,11 +89,13 @@ def _normalize_positions(items: dict) -> None:
         entry["position"] = idx
 
 
-def _resolve_cover_video_id(album: dict) -> str | None:
+def _resolve_cover_video_id(album: dict, video_ids: list[str] | None = None) -> str | None:
     items = album.get("items") or {}
     cover = (album.get("cover_video_id") or "").strip()
-    if cover and cover in items:
+    if cover and (cover in items or (video_ids and cover in video_ids)):
         return cover
+    if video_ids:
+        return video_ids[0] if video_ids else None
     if not items:
         return None
     ordered = sorted(
@@ -103,8 +105,44 @@ def _resolve_cover_video_id(album: dict) -> str | None:
     return ordered[0][0]
 
 
+def _is_filter_album(album: dict) -> bool:
+    return bool(album.get("filter") and album["filter"].get("tag"))
+
+
+def _filter_video_ids(library_id: str, album: dict) -> list[str]:
+    """标签专辑：动态聚合该标签下视频 id（按 mtime 倒序，新在前）。"""
+    tag = (album.get("filter") or {}).get("tag") or ""
+    if not tag:
+        return []
+    from loc_gallery.tag_store import get_videos_by_tag
+    from loc_gallery.scanner import get_by_id
+
+    ids = get_videos_by_tag(library_id, tag)
+    # 按 mtime 倒序（最近更新的在前，封面取最新）
+    with_mtime = []
+    for vid in ids:
+        item = get_by_id(library_id, vid)
+        with_mtime.append((vid, item.mtime if item else 0))
+    with_mtime.sort(key=lambda x: -x[1])
+    return [vid for vid, _ in with_mtime]
+
+
 def _album_summary(library_id: str, album_id: str, album: dict) -> dict:
     items = album.get("items") or {}
+    if _is_filter_album(album):
+        # 标签专辑：动态聚合，不写 items
+        filter_ids = _filter_video_ids(library_id, album)
+        cover_id = _resolve_cover_video_id(album, filter_ids)
+        return {
+            "id": album_id,
+            "name": album.get("name") or "未命名专辑",
+            "description": album.get("description") or "",
+            "filter": {"tag": album["filter"]["tag"]},
+            "cover_video_id": cover_id,
+            "video_count": len(filter_ids),
+            "created_at": album.get("created_at"),
+            "updated_at": album.get("updated_at"),
+        }
     cover_id = _resolve_cover_video_id(album)
     return {
         "id": album_id,
@@ -125,7 +163,20 @@ def list_albums(library_id: str) -> list[dict]:
         for aid in albums:
             if aid not in order:
                 order.append(aid)
-    return [_album_summary(library_id, aid, albums[aid]) for aid in order]
+    # 标签专辑：按 tag_album_min_videos 阈值过滤（低于阈值的标签专辑不显示）
+    try:
+        from loc_gallery.settings_store import get_setting
+        min_videos = int(get_setting("tag_album_min_videos") or 3)
+    except Exception:
+        min_videos = 3
+    out = []
+    for aid in order:
+        album = albums[aid]
+        summary = _album_summary(library_id, aid, album)
+        if _is_filter_album(album) and summary["video_count"] < min_videos:
+            continue
+        out.append(summary)
+    return out
 
 
 def get_album(library_id: str, album_id: str) -> dict | None:
@@ -134,6 +185,10 @@ def get_album(library_id: str, album_id: str) -> dict | None:
     if not album:
         return None
     summary = _album_summary(library_id, album_id, album)
+    if _is_filter_album(album):
+        # 标签专辑：video_ids 动态聚合
+        summary["video_ids"] = _filter_video_ids(library_id, album)
+        return summary
     items = album.get("items") or {}
     video_ids = sorted(
         items.keys(),
@@ -146,7 +201,14 @@ def get_album(library_id: str, album_id: str) -> dict | None:
     return summary
 
 
-def create_album(library_id: str, name: str, *, description: str = "") -> dict:
+def create_album(
+    library_id: str,
+    name: str,
+    *,
+    description: str = "",
+    tag: str | None = None,
+) -> dict:
+    """创建专辑；tag 非空则创建「标签专辑」（动态聚合该标签下视频，不写 items）。"""
     name = (name or "").strip()
     if not name:
         raise ValueError("专辑名称不能为空")
@@ -155,19 +217,24 @@ def create_album(library_id: str, name: str, *, description: str = "") -> dict:
     with _lock:
         data = _load_raw(library_id)
         albums = data.setdefault("albums", {})
-        albums[album_id] = {
+        album = {
             "id": album_id,
             "name": name,
             "description": (description or "").strip(),
             "cover_video_id": None,
             "created_at": now,
             "updated_at": now,
-            "items": {},
         }
+        if tag and tag.strip():
+            album["filter"] = {"tag": tag.strip()}
+            album["items"] = {}
+        else:
+            album["items"] = {}
+        albums[album_id] = album
         order = data.setdefault("album_order", [])
         order.append(album_id)
         _save_raw(library_id, data)
-    return get_album(library_id, album_id) or _album_summary(library_id, album_id, albums[album_id])
+    return get_album(library_id, album_id) or _album_summary(library_id, album_id, album)
 
 
 def update_album(
@@ -192,6 +259,9 @@ def update_album(
         if description is not None:
             album["description"] = description.strip()
         if cover_video_id is not None:
+            if _is_filter_album(album):
+                # 标签专辑封面自动取最新，不允许手动设置
+                raise ValueError("标签专辑封面自动生成，不可手动设置")
             cover_video_id = cover_video_id.strip()
             items = album.get("items") or {}
             if cover_video_id and cover_video_id not in items:
@@ -250,6 +320,9 @@ def add_videos(library_id: str, album_id: str, video_ids: list[str]) -> dict | N
         album = albums.get(album_id)
         if not album:
             return None
+        if _is_filter_album(album):
+            # 标签专辑只读：由标签自动聚合，不允许手动加入
+            return None
         items = album.setdefault("items", {})
         max_pos = max((float(v.get("position", 0)) for v in items.values()), default=-1)
         added = 0
@@ -280,6 +353,8 @@ def remove_videos(library_id: str, album_id: str, video_ids: list[str]) -> dict 
         album = albums.get(album_id)
         if not album:
             return None
+        if _is_filter_album(album):
+            return None
         items = album.get("items") or {}
         removed = 0
         for vid in video_ids:
@@ -304,6 +379,8 @@ def reorder_videos(library_id: str, album_id: str, order: list[str]) -> dict | N
         albums = data.get("albums") or {}
         album = albums.get(album_id)
         if not album:
+            return None
+        if _is_filter_album(album):
             return None
         items = album.get("items") or {}
         seen: set[str] = set()

@@ -194,7 +194,7 @@ function onGridKeydown(e: KeyboardEvent) {
 
 
 
-async function onNetflixCategoryChange(e: Event) {
+async function onCinemaCategoryChange(e: Event) {
   const name = (e.target as HTMLSelectElement).value
   await selectCategory(name || null)
 }
@@ -269,7 +269,7 @@ function onVideoContext(e: MouseEvent, videoId: string) {
     <AppHeader />
 
     <div class="flex min-h-0 flex-1">
-      <CategorySidebar v-if="settings.preset === 'youtube'" />
+      <CategorySidebar v-if="settings.preset === 'classic'" />
 
       <main class="relative flex min-h-0 flex-1 flex-col overflow-hidden p-4">
 
@@ -284,10 +284,10 @@ function onVideoContext(e: MouseEvent, videoId: string) {
           <span class="text-sm text-[var(--lg-text-muted)]">{{ t('page.count', { n: gallery.total }) }}</span>
 
           <select
-            v-if="settings.preset === 'netflix'"
+            v-if="settings.preset === 'cinema'"
             class="rounded border border-[var(--lg-border)] bg-[var(--lg-bg-input)] px-2 py-1 text-sm"
             :value="gallery.category || ''"
-            @change="onNetflixCategoryChange"
+            @change="onCinemaCategoryChange"
           >
             <option value="">{{ t('browse.allCategories') }}</option>
             <option v-for="cat in gallery.categories" :key="cat.name" :value="cat.name">
