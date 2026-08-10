@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useGalleryStore } from '@/stores/gallery'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore, type ThemePreset } from '@/stores/settings'
@@ -13,6 +13,7 @@ import HeaderProgressBar from '@/components/layout/HeaderProgressBar.vue'
 import { t } from '@/i18n'
 
 const route = useRoute()
+const router = useRouter()
 const gallery = useGalleryStore()
 const library = useLibraryStore()
 const settings = useSettingsStore()
@@ -119,6 +120,10 @@ function onSearchEnter(e: KeyboardEvent) {
 async function onLibraryChange(e: Event) {
   const id = (e.target as HTMLSelectElement).value
   await library.switchLibrary(id)
+  // 无论之前在哪个页面（专辑/收藏/播放等），切库后一律回到新库首页
+  if (route.name !== 'browse') {
+    await router.push({ name: 'browse' })
+  }
   // 抑制 SSE 重连握手触发的二次列表加载（否则图片显示后被刷新一次 = 轻微闪烁）
   suppressVersionLoad()
   gallery.clearFolderCaches()
