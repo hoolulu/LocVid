@@ -85,6 +85,9 @@ THUMB_JITTER_MAX = 94  # maximum position percentage (88-97)
 DEFAULT_PAGE_SIZE = 32
 DEFAULT_SORT = "mtime_desc"  # 画廊默认排序（未手动选过排序时生效）
 WATCH_IGNORE_DIRS = ""  # watchdog 忽略的目录名（逗号分隔），如 "cache,.git"
+# watchdog 文件变更监听开关：False 时禁用（大批量整理/迁移期间可临时关闭，避免
+# 海量文件事件触发反复全库刷新导致服务卡死）；整理完成、索引重建后改回 True 并重启。
+WATCHDOG_ENABLED = True
 HISTORY_RETENTION_DAYS = 180
 
 FILE_STABLE_CHECK_DELAY = 5.0
