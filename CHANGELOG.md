@@ -2,6 +2,18 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [15.0.1] - 2026-08-11
+
+### Fixed (English)
+
+- **Rescan did not refresh thumbnail/duration indexes** (P1): `api_rescan` runs `_do_rescan` via `asyncio.to_thread`, and the new thread does not inherit the `ContextVar` library context. Functions like `sync_index_with_videos` / `cleanup_orphans` then fell back to an empty library id, so indexes were never updated and orphans were cleaned in the wrong library. `_do_rescan` now explicitly sets the thread library context.
+- **Duration progress bar stuck at a mid value after rescan** (P2): the duration probe worker never emitted progress events, so the frontend SSE stopped at the last broadcast (e.g. 77.9%) even after all probes finished. The worker now notifies progress after each file (1s throttled), with a forced broadcast when the queue drains.
+
+### 修复（中文）
+
+- **重新扫描后缩略图/时长索引不刷新**（P1）：`api_rescan` 经 `asyncio.to_thread` 执行 `_do_rescan`，新线程不继承 `ContextVar` 库上下文，`sync_index_with_videos` / `cleanup_orphans` 等函数回退到空库 id，索引不更新、孤儿清理作用到错误库。`_do_rescan` 现显式设置线程库上下文。
+- **时长探测进度条卡在中间值**（P2）：时长探测 worker 从不发进度事件，全部完成后前端 SSE 仍停在最后一次广播（如 77.9%）。worker 现于每个文件探测后通知进度（1 秒节流），队列清空时强制广播一次。
+
 ## [15.0.0] - 2026-08-10
 
 ### Added (English)
@@ -12,7 +24,7 @@
 ### Fixed (English)
 
 - **Thumbnail cache usage not displayed** (P1): `/api/thumb/stats` was shadowed by the `/api/thumb/{video_id}` route (defined later matched first), so the settings page always showed "…" — the stats route is now registered before the wildcard.
-- **Orphan thumbnail cleanup reported 0**: `cleanup_orphans` only scanned index entries (≈0); on-disk orphan `*.jpg` files (leftover candidate frames / deleted videos) were never removed. Now scans the disk directory. (G电影 library: 30 real orphans cleaned.)
+- **Orphan thumbnail cleanup reported 0**: `cleanup_orphans` only scanned index entries (≈0); on-disk orphan `*.jpg` files (leftover candidate frames / deleted videos) were never removed. Now scans the disk directory. (30 real orphans cleaned in one library.)
 - **Cache usage count off by one**: stats counted `index.json` as a file (137 vs 106 videos) — now counts only `*.jpg` thumbnails.
 - **Thumbnail progress bar never disappeared after completion** (P1): the last "done" broadcast was swallowed by the 1s throttle in `_notify_progress`, so the frontend stayed busy forever — a forced broadcast fires when the queue drains.
 - **Switching libraries showed blank thumbnails** (P1): `loading="lazy"` conflicted with the virtual grid (new rows misjudged as off-screen during scroll-reset) — removed lazy loading and added one auto-retry on image error.
@@ -28,7 +40,7 @@
 ### 修复（中文）
 
 - **缩略图缓存占用不显示**（P1）：`/api/thumb/stats` 被 `/api/thumb/{video_id}` 通配路由抢先匹配，设置页一直显示"…"——stats 路由已移至通配路由之前。
-- **清理孤立缩略图报 0 个**：`cleanup_orphans` 只扫索引条目（≈0），磁盘上残留的孤儿 `*.jpg`（候选帧/已删视频残留）从未被清理——现补磁盘目录扫描（G电影 实测清掉 30 个真实孤儿）。
+- **清理孤立缩略图报 0 个**：`cleanup_orphans` 只扫索引条目（≈0），磁盘上残留的孤儿 `*.jpg`（候选帧/已删视频残留）从未被清理——现补磁盘目录扫描（一个库实测清掉 30 个真实孤儿）。
 - **缓存占用计数多 1**：stats 把 `index.json` 也算作文件（137 vs 106 视频）——现只统计 `*.jpg` 缩略图。
 - **缩略图进度条完成后不消失**（P1）：`_notify_progress` 的 1s 节流吞掉最后一次"完成"广播，前端永远停留在忙碌——队列清空时强制广播。
 - **切库后大量缩略图空白**（P1）：`loading="lazy"` 与虚拟网格冲突（滚动重置瞬间新行被误判视口外）——移除 lazy，图片加载失败自动重试一次。
