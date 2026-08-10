@@ -1473,6 +1473,11 @@ def _duration_worker_loop() -> None:
                     _duration_probing.add(key)
                 try:
                     probe_and_cache_duration(item)
+                    # 进度广播：duration 完成时通知前端刷新（与缩略图一致走 1s 节流；
+                    # 队列空时 force 一次，否则最后一次完成的广播被节流吞掉 → 前端进度条卡住）
+                    with _lock:
+                        _all_done = _duration_queue.qsize() == 0 and not _duration_probing
+                    _notify_progress(force=_all_done)
                     now = time.time()
                     if now - _last_flush_at >= 1.0:
                         _flush_index_sync(library_id)
