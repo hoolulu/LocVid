@@ -200,5 +200,29 @@ def save_settings(data: dict, library_id: str | None = None) -> dict:
         return merged
 
 
+def clear_library_override(library_id: str, key: str) -> None:
+    """删除某个库级覆盖键（用户显式保存 global 后，让全局值真正生效）。"""
+    path = library_settings_file(library_id)
+    if not path.exists():
+        return
+    with _lock:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return
+        except (json.JSONDecodeError, OSError):
+            return
+        if key not in data:
+            return
+        del data[key]
+        if data:
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(path)
+        else:
+            # 空文件直接删除，避免残留空壳
+            path.unlink(missing_ok=True)
+
+
 def get_setting(key: str, library_id: str | None = None):
     return load_settings(library_id).get(key, _DEFAULTS.get(key))

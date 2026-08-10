@@ -875,7 +875,12 @@ def _filter_videos_list(
     elif album_id:
         order_idx = {vid: i for i, vid in enumerate(list_album_video_ids_sorted(library_id, album_id))}
         items = [v for v in get_all(library_id) if v.id in order_idx]
-        items.sort(key=lambda v: order_idx.get(v.id, 10_000))
+        if sort == "page":
+            # 专辑顺序：手动专辑=加入顺序，标签专辑=打标签顺序
+            items.sort(key=lambda v: order_idx.get(v.id, 10_000))
+        else:
+            # 其他排序（mtime/文件名/时长/随机等）在专辑内生效
+            items = _apply_video_sort(items, sort, seed, library_id)
     else:
         folder_filter = folder if category else None
         if category and folder is None and not q:
@@ -1052,6 +1057,11 @@ def _filter_videos(
         query = q.lower().strip()
         items = [v for v in items if _search_match(v, query)]
 
+    return _apply_video_sort(items, sort, seed, library_id)
+
+
+def _apply_video_sort(items: list, sort: str, seed: int | None = None, library_id: str | None = None) -> list:
+    """对已过滤的视频列表应用排序（画廊排序/专辑详情通用）。"""
     if sort == "random":
         rng = random.Random(seed) if seed is not None else random
         rng.shuffle(items)
@@ -1059,7 +1069,7 @@ def _filter_videos(
 
     if sort in ("playcount_desc", "playcount_asc"):
         # 按播放次数排序：批量读历史 map（含 play_count），未播过按 0 处理
-        hist_map = get_history_map(library_id)
+        hist_map = get_history_map(library_id) if library_id else {}
         items.sort(
             key=lambda v: int((hist_map.get(v.id) or {}).get("play_count", 0)),
             reverse=(sort == "playcount_desc"),
@@ -1766,6 +1776,11 @@ async def api_albums_videos_add(
     req: AlbumVideosRequest,
     library_id: str = Depends(resolve_library_id),
 ):
+    album = get_album(library_id, album_id)
+    if not album:
+        raise HTTPException(404, "专辑不存在")
+    if (album.get("filter") or {}).get("tag"):
+        raise HTTPException(400, "标签专辑由标签自动聚合，不能手动添加视频")
     ids = [i for i in req.ids if get_by_id(library_id, i)]
     album = album_add_videos(library_id, album_id, ids)
     if not album:
@@ -1779,6 +1794,11 @@ async def api_albums_videos_remove(
     req: AlbumVideosRequest,
     library_id: str = Depends(resolve_library_id),
 ):
+    album = get_album(library_id, album_id)
+    if not album:
+        raise HTTPException(404, "专辑不存在")
+    if (album.get("filter") or {}).get("tag"):
+        raise HTTPException(400, "标签专辑由标签自动聚合，不能手动移除视频")
     album = album_remove_videos(library_id, album_id, req.ids)
     if not album:
         raise HTTPException(404, "专辑不存在")
@@ -2276,12 +2296,21 @@ async def api_save_settings(body: SettingsUpdate, library_id: str = Depends(reso
         before = dict(current)
         current.update(payload)
         saved = save_settings(current)
+        # 用户显式保存全局设置：清除所有库级覆盖，让全局值真正生效
+        from loc_gallery.library_store import list_libraries
+        from loc_gallery.settings_store import clear_library_override
+
+        for key in payload:
+            for lib in list_libraries():
+                clear_library_override(lib.id, key)
     else:
         current = load_settings(library_id)
         old_idle = current.get("thumb_idle_scan")
         before = dict(current)
+        # 库级保存：只更新用户传入的键（save_settings 内部按白名单过滤），
+        # 不把 merged 全量固化到库级，避免"保存一次后全局设置被库级覆盖锁死"
         current.update(payload)
-        saved = save_settings(current, library_id)
+        saved = save_settings(payload, library_id)
     if saved.get("thumb_idle_scan") and not old_idle:
         start_idle_scan_background()
     elif not saved.get("thumb_idle_scan") and old_idle:

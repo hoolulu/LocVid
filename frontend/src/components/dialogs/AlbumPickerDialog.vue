@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { addVideosToAlbum, removeVideosFromAlbum } from '@/api/albums'
+import { addVideoTags, removeVideoTag } from '@/api/tags'
 import { t } from '@/i18n'
 import { useAlbumStore } from '@/stores/album'
 import { useGalleryStore } from '@/stores/gallery'
@@ -25,6 +26,21 @@ const hint = computed(() => {
     : t('album.pickerForVideos', { n })
 })
 
+/** 标签专辑（filter.tag 非空）——勾选它=给视频打对应标签，由标签动态聚合进专辑 */
+function isTagAlbum(a: { filter?: { tag: string } }) {
+  return !!(a.filter && a.filter.tag)
+}
+
+/** 判断视频是否已属于该专辑（标签专辑按 tags 判断，手动专辑按 albumIds 判断） */
+function videoInAlbum(
+  video: { albumIds?: string[]; tags?: string[] } | null | undefined,
+  a: { id: string; filter?: { tag: string } },
+) {
+  if (!video) return false
+  if (isTagAlbum(a)) return (video.tags || []).includes(a.filter!.tag)
+  return (video.albumIds || []).includes(a.id)
+}
+
 function videoById(id: string) {
   return (
     gallery.videos.find((v) => v.id === id) ??
@@ -35,7 +51,8 @@ function videoById(id: string) {
 
 function membership(albumId: string) {
   const ids = ui.albumPickerIds
-  const hits = ids.filter((id) => (videoById(id)?.albumIds || []).includes(albumId))
+  const target = album.albums.find((a) => a.id === albumId)
+  const hits = ids.filter((id) => videoInAlbum(videoById(id), target || { id: albumId }))
   return {
     all: hits.length === ids.length,
     some: hits.length > 0 && hits.length < ids.length,
@@ -79,9 +96,24 @@ function initCheckboxes() {
   }
 }
 
-function patchVideoAlbumIds(videoId: string, albumId: string, add: boolean) {
-  const apply = (video: { albumIds?: string[] } | null | undefined) => {
+function patchVideoAlbumIds(videoId: string, albumId: string, add: boolean, tag?: string) {
+  const apply = (video: { albumIds?: string[]; tags?: string[] } | null | undefined) => {
     if (!video) return
+    if (tag) {
+      // 标签专辑：更新标签集合，同时把对应标签专辑 id 同步进 albumIds（角标/按钮据此展示）
+      const tags = new Set(video.tags || [])
+      if (add) tags.add(tag)
+      else tags.delete(tag)
+      video.tags = [...tags]
+      const target = album.albums.find((a) => a.filter?.tag === tag)
+      if (target) {
+        const ids = new Set(video.albumIds || [])
+        if (add) ids.add(target.id)
+        else ids.delete(target.id)
+        video.albumIds = [...ids]
+      }
+      return
+    }
     const ids = new Set(video.albumIds || [])
     if (add) ids.add(albumId)
     else ids.delete(albumId)
@@ -116,10 +148,28 @@ async function confirm() {
   const ids = ui.albumPickerIds
   if (!ids.length) return
 
+  // 标签专辑：勾选=打标签，取消=移除标签（由标签动态聚合进专辑）
+  const tagOps: { videoId: string; add: string[]; remove: string[] }[] = ids.map((id) => ({
+    videoId: id,
+    add: [],
+    remove: [],
+  }))
+  // 手动专辑：维持原 add/remove 逻辑
   const ops: { albumId: string; add?: string[]; remove?: string[] }[] = []
+
   for (const a of album.albums) {
     const want = !!checked[a.id]
     const had = !!initialChecked[a.id]
+    const tag = a.filter?.tag
+    if (tag) {
+      for (const id of ids) {
+        const inAlbum = (videoById(id)?.tags || []).includes(tag)
+        const op = tagOps.find((o) => o.videoId === id)!
+        if (want && !inAlbum) op.add.push(tag)
+        else if (!want && inAlbum) op.remove.push(tag)
+      }
+      continue
+    }
     if (want && !had) {
       const missing = ids.filter((id) => !(videoById(id)?.albumIds || []).includes(a.id))
       if (missing.length) ops.push({ albumId: a.id, add: missing })
@@ -129,13 +179,26 @@ async function confirm() {
     }
   }
 
-  if (!ops.length) {
+  const hasTagOps = tagOps.some((o) => o.add.length || o.remove.length)
+  if (!hasTagOps && !ops.length) {
     ui.showToast(t('album.unchanged'))
     ui.closeAlbumPicker()
     return
   }
 
   try {
+    for (const op of tagOps) {
+      if (op.add.length) {
+        await addVideoTags(op.videoId, op.add)
+        op.add.forEach((tag) => patchVideoAlbumIds(op.videoId, '', true, tag))
+      }
+      if (op.remove.length) {
+        for (const tag of op.remove) {
+          await removeVideoTag(op.videoId, tag)
+          patchVideoAlbumIds(op.videoId, '', false, tag)
+        }
+      }
+    }
     for (const op of ops) {
       if (op.add?.length) {
         await addVideosToAlbum(op.albumId, op.add)
@@ -200,6 +263,12 @@ function close() {
       >
         <input v-model="checked[a.id]" type="checkbox" :value="a.id" />
         <span class="album-picker-name">{{ a.name }}</span>
+        <span
+          v-if="isTagAlbum(a)"
+          class="shrink-0 rounded border border-[var(--lg-accent)]/40 bg-[var(--lg-accent)]/10 px-1.5 py-0.5 text-[0.65rem] text-[var(--lg-accent)]"
+        >
+          {{ t('album.tagAlbum') }}
+        </span>
         <span class="album-picker-count">{{ t('album.videoCount', { n: a.video_count || 0 }) }}</span>
       </label>
     </div>

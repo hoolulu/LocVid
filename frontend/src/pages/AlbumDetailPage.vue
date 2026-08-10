@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import { useRoute, useRouter } from 'vue-router'
 
@@ -30,7 +30,8 @@ import { useUiStore } from '@/stores/ui'
 
 import { usePlayerStore } from '@/stores/player'
 
-
+import type { SortMode } from '@/types'
+import { getPlaylistSortOptions } from '@/constants/sort'
 
 const route = useRoute()
 
@@ -52,6 +53,15 @@ const player = usePlayerStore()
 
 const customPageSize = ref('')
 
+// 专辑内排序：默认"专辑顺序"（手动专辑=加入顺序，标签专辑=打标签顺序）
+const albumSort = ref<SortMode>('page')
+const sortOptions = computed(() => getPlaylistSortOptions())
+
+async function onAlbumSortChange() {
+  gallery.page = 1
+  await gallery.loadVideos({ sort: albumSort.value })
+}
+
 
 
 onMounted(async () => {
@@ -65,7 +75,7 @@ onMounted(async () => {
   gallery.albumId = id
   gallery.category = null
   gallery.page = 1
-  await gallery.loadVideos()
+  await gallery.loadVideos({ sort: albumSort.value })
 })
 
 onUnmounted(() => {
@@ -87,7 +97,7 @@ async function playAll() {
 async function onPageSizeChange(size: number) {
   customPageSize.value = ''
   gallery.setPageSize(size, settings.preset)
-  await gallery.loadVideos()
+  await gallery.loadVideos({ sort: albumSort.value })
 }
 
 async function onCustomPageSize(e: KeyboardEvent) {
@@ -95,13 +105,13 @@ async function onCustomPageSize(e: KeyboardEvent) {
   const n = parseInt(customPageSize.value, 10)
   if (!Number.isFinite(n) || n < 1) return
   gallery.setPageSize(n, settings.preset)
-  await gallery.loadVideos()
+  await gallery.loadVideos({ sort: albumSort.value })
 }
 
 async function changePage(next: number) {
   if (next < 1 || next > gallery.totalPages) return
   gallery.page = next
-  await gallery.loadVideos()
+  await gallery.loadVideos({ sort: albumSort.value })
 }
 
 
@@ -111,7 +121,7 @@ async function removeFromAlbum(id: string) {
   const ok = await ui.showConfirm(t('album.removeVideoConfirm'))
   if (!ok) return
   await removeVideosFromAlbum(albumId, [id])
-  await gallery.loadVideos()
+  await gallery.loadVideos({ sort: albumSort.value })
   await album.loadAlbum(albumId)
 }
 
@@ -186,6 +196,16 @@ async function onContextAction(ev: Event) {
           </p>
 
         </div>
+
+        <select
+          v-model="albumSort"
+          class="rounded border border-[var(--lg-border)] bg-[var(--lg-bg-secondary)] px-2 py-1 text-sm"
+          @change="onAlbumSortChange"
+        >
+          <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
 
         <button
 

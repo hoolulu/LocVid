@@ -79,7 +79,7 @@ export default {
   'tag.saveFailed': '标签保存失败：{msg}',
   'album.tagAlbum': '标签专辑',
   'album.manage': '管理专辑（{n}）',
-  'album.pickerHint': '勾选要加入的专辑，取消勾选将从专辑移除。',
+  'album.pickerHint': '勾选要加入的专辑；标签专辑勾选后自动打上对应标签。',
   'album.pickerForVideos': '为 {n} 个视频选择专辑归属。',
   'album.newName': '新专辑名称',
   'album.createShort': '＋新建',

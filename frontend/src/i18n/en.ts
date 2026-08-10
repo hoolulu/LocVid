@@ -79,7 +79,7 @@ export default {
   'tag.saveFailed': 'Failed to save tags: {msg}',
   'album.tagAlbum': 'Tag album',
   'album.manage': 'Manage Albums ({n})',
-  'album.pickerHint': 'Check albums to add; uncheck to remove.',
+  'album.pickerHint': 'Check albums to add; tag albums apply the matching tag.',
   'album.pickerForVideos': 'Choose albums for {n} videos.',
   'album.newName': 'New album name',
   'album.createShort': '＋Create',

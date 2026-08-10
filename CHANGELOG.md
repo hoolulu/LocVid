@@ -2,6 +2,40 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.0.1] - 2026-08-11
+
+### Added (English)
+
+- **Album sorting dropdown**: album detail pages now offer a sort selector — album order (manual albums = added order, tag albums = tagging order) plus filename / duration / play count / random, applied within the album.
+- **Tag albums are now joinable**: checking a tag album in the "Add to Album" picker applies the matching tag to the selected videos (unchecking removes it); membership reflects the tags on the video. Tag albums show a badge in the picker.
+
+### Changed (English)
+
+- **Global settings save now takes effect**: saving a setting in global scope clears that key's per-library overrides (previously a stale library override could silently shadow the new global value); library-scope saves only write the keys actually changed, no longer freezing the whole merged snapshot.
+
+### Fixed (English)
+
+- **"Album not found" when adding videos** (P1): the add/remove endpoints reported 404 for tag albums (read-only dynamic albums) with a misleading message — now they return a clear 400 explaining tag albums are auto-aggregated; the picker applies tags instead of manual membership.
+- **Hover-preview setting reverted after restart** (P1): a one-time library-scope save had frozen all settings into the per-library file, shadowing later global edits — stale library overrides were cleared and the save pipeline rewritten so saved values persist.
+- **Album picker crashed** (`Cannot access 'album' before initialization`, TDZ): a local variable shadowed the album store inside `membership()`.
+- **Player/thumbnail badges did not reflect tag albums**: `albumIds` now includes tag albums whose tag is present on the video.
+
+### 新增（中文）
+
+- **专辑排序下拉**：专辑详情页新增排序选择器——专辑顺序（手动专辑=加入顺序，标签专辑=打标签顺序）以及文件名/时长/播放次数/随机，在专辑范围内生效。
+- **标签专辑可加入**：在「加入专辑」选择器中勾选标签专辑即为所选视频打上对应标签（取消勾选则移除标签）；视频归属反映其标签，标签专辑在选择器中带徽标标识。
+
+### 变更（中文）
+
+- **全局设置保存即时生效**：以全局范围保存设置时，会清除该键在各库的覆盖（此前过期的库级覆盖会静默盖掉新保存的全局值）；库级保存只写实际变更的键，不再固化整份合并快照。
+
+### 修复（中文）
+
+- **加入专辑误报「专辑不存在」**（P1）：add/remove 接口对标签专辑（只读动态专辑）返回 404 且文案误导——现改为 400 明确提示标签专辑由标签自动聚合；选择器改为勾选标签专辑即打标签。
+- **悬停预览设置重启后被还原**（P1）：一次库级保存曾把全部设置固化进库级文件，遮蔽之后的全局修改——已清理过期的库级覆盖并重写保存链路，保存值现可持久生效。
+- **加入专辑对话框崩溃**（`Cannot access 'album' before initialization`，TDZ）：`membership()` 内局部变量遮蔽了专辑 store。
+- **播放页/缩略图角标不反映标签专辑**：`albumIds` 现包含视频已打对应标签的标签专辑。
+
 ## [16.0.0] - 2026-08-11
 
 ### Added (English)

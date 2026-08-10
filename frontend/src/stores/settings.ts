@@ -58,9 +58,22 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function updateSettings(data: Partial<Settings>, scope: 'global' | 'library' = 'global') {
-    const payload = { ...data }
+    // 只发送「实际变化」的键：后端 global 保存会清除这些键的库级覆盖，
+    // 若整份 form 全量发送会把用户在其他库的独立配置误删
+    const prev = settings.value || {}
+    const payload: Partial<Settings> = {}
+    for (const key of Object.keys(data) as (keyof Settings)[]) {
+      const a = data[key]
+      const b = prev[key]
+      const changed = a !== b && JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)
+      if (changed) payload[key] = a as never
+    }
     if (payload.ui_preset === 'spotify' as string) payload.ui_preset = 'classic'
-    const saved = await saveSettings(payload, scope)
+
+    let saved: Settings | null = null
+    if (Object.keys(payload).length) {
+      saved = await saveSettings(payload, scope)
+    }
     if (data.ui_theme === 'light' || data.ui_theme === 'dark') {
       theme.value = data.ui_theme
       setSavedTheme(data.ui_theme)
@@ -70,7 +83,11 @@ export const useSettingsStore = defineStore('settings', () => {
       setSavedPreset(preset.value)
     }
     // 后端返回值不含 ui_theme/ui_preset：合并本地偏好，保持设置页下拉正确显示
-    settings.value = { ...(saved || {}), ui_theme: theme.value, ui_preset: preset.value } as Settings
+    settings.value = {
+      ...(saved || prev),
+      ui_theme: theme.value,
+      ui_preset: preset.value,
+    } as Settings
     applyDom()
   }
 

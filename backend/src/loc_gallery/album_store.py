@@ -410,9 +410,20 @@ def get_album_ids_for_video(library_id: str, video_id: str) -> list[str]:
     with _lock:
         albums = _load_raw(library_id).get("albums") or {}
     out: list[str] = []
+    tag_albums: list[tuple[str, str]] = []
     for aid, album in albums.items():
         if video_id in (album.get("items") or {}):
             out.append(aid)
+        tag = (album.get("filter") or {}).get("tag")
+        if tag:
+            tag_albums.append((aid, tag))
+    # 标签专辑：打了对应标签的视频同样计入 albumIds（前端按钮/角标据此展示）
+    if tag_albums:
+        from loc_gallery.tag_store import get_video_tags
+        tags = set(get_video_tags(library_id, video_id))
+        for aid, tag in tag_albums:
+            if tag in tags:
+                out.append(aid)
     return out
 
 
@@ -423,10 +434,23 @@ def get_album_map_for_videos(library_id: str, video_ids: list[str]) -> dict[str,
     with _lock:
         albums = _load_raw(library_id).get("albums") or {}
     out: dict[str, list[str]] = {vid: [] for vid in wanted}
+    tag_to_aids: dict[str, list[str]] = {}
     for aid, album in albums.items():
         for vid in (album.get("items") or {}):
             if vid in wanted:
                 out[vid].append(aid)
+        tag = (album.get("filter") or {}).get("tag")
+        if tag:
+            tag_to_aids.setdefault(tag, []).append(aid)
+    # 标签专辑聚合：一次读全量标签 map 反查，避免 N+1
+    if tag_to_aids:
+        from loc_gallery.tag_store import get_tags_map
+        tags_map = get_tags_map(library_id)
+        for vid in wanted:
+            vtags = tags_map.get(vid) or []
+            for tag in vtags:
+                for aid in tag_to_aids.get(tag, ()):
+                    out[vid].append(aid)
     return out
 
 

@@ -175,9 +175,11 @@ export const useGalleryStore = defineStore('gallery', () => {
 
 
 
-  async function loadVideos() {
+  async function loadVideos(opts?: { sort?: SortMode }) {
 
     const mySeq = ++videosReqSeq
+
+    const activeSort = opts?.sort ?? sort.value
 
     const params: Record<string, string | number | boolean> = {
 
@@ -185,7 +187,7 @@ export const useGalleryStore = defineStore('gallery', () => {
 
       page_size: pageSize.value,
 
-      sort: sort.value,
+      sort: activeSort,
 
     }
 
@@ -203,7 +205,7 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     if (viewMode.value === 'album-detail' && albumId.value) params.album_id = albumId.value
 
-    if (sort.value === 'random' && randomSeed.value != null) params.seed = randomSeed.value
+    if (activeSort === 'random' && randomSeed.value != null) params.seed = randomSeed.value
 
     // 不再读列表缓存：本地服务毫秒级返回，且缓存键无版本校验会命中改名/重扫前的旧数据
     // （旧 id 的专辑/收藏状态），导致改名后页面显示过期状态
