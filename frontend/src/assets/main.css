@@ -309,82 +309,80 @@ body {
   max-width: 14rem;
 }
 
-/* Header 下方缩略图/时长进度条 */
+/* Header 下方任务条（缩略图/修复/时长 入库处理管道）
+   风格参考 Element Plus 通知：圆角卡片、轻阴影、柔和状态色、平滑过渡 */
 .progress-bar-wrap {
   position: absolute;
   top: 100%;
   left: 0;
   right: 0;
   z-index: 51;
-  padding: 0.65rem 1.25rem 0.75rem;
+  padding: 0.55rem 1rem;
   background: var(--lg-bg-elevated);
   border: 1px solid var(--lg-border);
   border-top: none;
   border-radius: 0 0 10px 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
 }
 .progress-bar-wrap.progress-bar-collapsed {
   display: none;
-}
-.progress-info {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-.progress-info-left {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
 }
 .progress-text {
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--lg-text-secondary);
 }
-.progress-actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 0.35rem;
-}
+/* 操作按钮（Element 风格小按钮） */
 .progress-btn {
   border-radius: 6px;
   border: 1px solid var(--lg-border);
-  background: var(--lg-bg-secondary);
-  color: var(--lg-text-primary);
+  background: transparent;
+  color: var(--lg-text-secondary);
   padding: 0.2rem 0.55rem;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .progress-btn:hover {
   background: var(--lg-bg-hover);
+  color: var(--lg-text-primary);
 }
-.progress-track {
-  margin-top: 0.5rem;
-  height: 4px;
-  overflow: hidden;
-  border-radius: 999px;
+.progress-btn--fail {
+  color: #e85d5d;
+  border-color: rgba(232, 93, 93, 0.45);
+}
+.progress-btn--fail:hover {
+  background: rgba(232, 93, 93, 0.1);
+  color: #ff8585;
+}
+.progress-btn--close {
+  border: none;
+  background: transparent;
+  padding: 0.15rem 0.4rem;
+  color: var(--lg-text-muted);
+}
+.progress-btn--close:hover {
+  color: var(--lg-text-primary);
   background: var(--lg-bg-hover);
 }
+/* 进度条填充（按阶段渐变） */
 .progress-fill {
   height: 100%;
-  background: var(--lg-accent);
+  background: linear-gradient(
+    90deg,
+    var(--lg-accent),
+    color-mix(in srgb, var(--lg-accent) 55%, #fff)
+  );
   transition: width 0.25s ease;
 }
-.duration-progress-wrap {
-  margin-top: 0.75rem;
-  padding-top: 0.5rem;
-  border-top: 1px dashed var(--lg-border);
-}
-.duration-progress-fill {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
-}
-.remux-progress-fill {
+.task-track--remux .progress-fill {
   background: linear-gradient(90deg, #d97706, #f59e0b);
 }
-/* 顶部任务条：任务类型标签（缩略图 / 修复） */
+.task-track--duration .progress-fill {
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+}
+/* 空闲详情用的小标签（缩略图总况） */
 .task-chip {
   display: inline-flex;
   align-items: center;
@@ -398,22 +396,15 @@ body {
   line-height: 1.4;
   white-space: nowrap;
 }
-.task-chip--remux {
-  border-color: rgba(217, 119, 6, 0.45);
-  color: #d97706;
-  background: rgba(217, 119, 6, 0.08);
-}
-.task-chip--duration {
-  border-color: rgba(59, 130, 246, 0.45);
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.08);
-}
-/* 单任务条：徽标 + 文本 + 进度条 + 汇总 单行（尽量不遮内容） */
+/* 单行任务条：状态徽标 + 步骤 + 文本 + 进度条 + 百分比 + 操作（一行排下） */
 .task-pipeline {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.7rem;
   min-width: 0;
+}
+.task-pipeline--idle {
+  gap: 0.6rem;
 }
 .task-pipeline-text {
   flex: 0 1 auto;
@@ -424,8 +415,8 @@ body {
 }
 .task-pipeline-track {
   flex: 1 1 auto;
-  min-width: 60px;
-  height: 4px;
+  min-width: 64px;
+  height: 6px;
   overflow: hidden;
   border-radius: 999px;
   background: var(--lg-bg-hover);
@@ -441,56 +432,110 @@ body {
   display: flex;
   flex-shrink: 0;
   gap: 0.35rem;
-}
-/* 入库提示 banner（区别于完成闪示的绿色） */
-.task-incoming-banner {
-  border-color: rgba(59, 130, 246, 0.4);
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-}
-.task-incoming-icon {
-  flex-shrink: 0;
-  font-size: 0.8rem;
-}
-/* 顶部任务条：任务完成闪示（✓ 已完成，5s 后自动消失） */
-.task-done-banner {
-  display: flex;
   align-items: center;
-  gap: 0.45rem;
-  margin-bottom: 0.6rem;
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid rgba(34, 197, 94, 0.4);
-  background: rgba(34, 197, 94, 0.1);
-  color: #16a34a;
-  font-size: 0.75rem;
-  line-height: 1.4;
 }
-.task-done-icon {
+/* 状态徽标（入库 / 完成闪示）：行内胶囊，不占第二行 */
+.task-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  animation: task-badge-pop 0.25s ease;
+}
+.task-badge--incoming {
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  color: #60a5fa;
+}
+.task-badge--done {
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  color: #4ade80;
+}
+.task-badge-icon {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+@keyframes task-badge-pop {
+  0% { opacity: 0; transform: translateY(-4px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* 入库处理管道步骤 stepper：修复 → 缩略图 → 时长 */
+.task-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+.task-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: var(--lg-text-muted);
+  transition: color 0.2s;
+}
+.task-step--done {
+  color: #4ade80;
+}
+.task-step--current {
+  color: var(--lg-text-primary);
+  font-weight: 600;
+}
+.task-step--pending {
+  color: var(--lg-text-muted);
+  opacity: 0.65;
+}
+.task-step-dot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1rem;
-  height: 1rem;
-  flex-shrink: 0;
+  width: 0.95rem;
+  height: 0.95rem;
   border-radius: 50%;
-  background: #16a34a;
-  color: #fff;
-  font-size: 0.65rem;
+  border: 1.5px solid var(--lg-text-muted);
+  background: transparent;
+  color: transparent;
+  font-size: 0.55rem;
   font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
 }
-.duration-progress-hint {
-  margin: 0.45rem 0 0;
+.task-step--done .task-step-dot {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: #fff;
+}
+.task-step--current .task-step-dot {
+  border-color: var(--lg-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lg-accent) 22%, transparent);
+}
+.task-step--pending .task-step-dot {
+  border-style: dashed;
+}
+.task-step-sep {
+  width: 0.6rem;
+  height: 1px;
+  background: var(--lg-border);
+  flex-shrink: 0;
+}
+/* 百分比（等宽数字，宽度稳定） */
+.task-pct {
+  flex-shrink: 0;
+  min-width: 2.7rem;
+  text-align: right;
   font-size: 0.72rem;
-  line-height: 1.45;
-  color: var(--lg-text-muted);
-}
-.idle-scan-badge {
-  font-size: 0.68rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  border: 1px solid var(--lg-border);
-  color: var(--lg-text-muted);
+  font-variant-numeric: tabular-nums;
+  color: var(--lg-text-secondary);
 }
 .thumb-status-chip {
   display: inline-flex;

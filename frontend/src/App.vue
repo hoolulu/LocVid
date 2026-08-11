@@ -53,7 +53,11 @@ watch(
 const { connect, disconnect } = useSSE(
   // 新影片入库（watchdog 广播 version）→ 顶部任务条闪示「检测到新影片，开始处理…」。
   // 切库握手窗口已被 useSSE suppressVersionLoad 抑制，不会误触发。
-  () => notifyIncoming(),
+  // 同时刷新一次任务状态：兼容旧后端 remux 完成只发 version 的情况，避免任务条卡住
+  () => {
+    notifyIncoming()
+    refreshThumbProgress()
+  },
   () => refreshThumbProgress(),
 )
 

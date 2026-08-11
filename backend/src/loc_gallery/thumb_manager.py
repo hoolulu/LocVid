@@ -1473,11 +1473,8 @@ def _duration_worker_loop() -> None:
                     _duration_probing.add(key)
                 try:
                     probe_and_cache_duration(item)
-                    # 进度广播：duration 完成时通知前端刷新（与缩略图一致走 1s 节流；
-                    # 队列空时 force 一次，否则最后一次完成的广播被节流吞掉 → 前端进度条卡住）
-                    with _lock:
-                        _all_done = _duration_queue.qsize() == 0 and not _duration_probing
-                    _notify_progress(force=_all_done)
+                    # 进度广播：duration 完成时通知前端刷新（与缩略图一致走 1s 节流）
+                    _notify_progress()
                     now = time.time()
                     if now - _last_flush_at >= 1.0:
                         _flush_index_sync(library_id)
@@ -1485,6 +1482,12 @@ def _duration_worker_loop() -> None:
                 finally:
                     with _lock:
                         _duration_probing.discard(key)
+                        # 队列+probing 全空才算完成：必须在 discard 之后判定，
+                        # 否则当前 key 仍在 probing 集合 → all_done 恒为 False → force 永不触发，
+                        # 最后一次完成的广播被节流吞掉 → 前端任务条卡住（用户反馈）
+                        _all_done = _duration_queue.qsize() == 0 and not _duration_probing
+                    if _all_done:
+                        _notify_progress(force=True)
             time.sleep(_DURATION_PROBE_INTERVAL)
         except Exception:
             pass
@@ -1859,6 +1862,13 @@ def _process_one(library_id: str, video_id: str) -> None:
     from loc_gallery.remux_manager import is_pending_or_running
 
     if is_pending_or_running(library_id, video_id):
+        # 待修复/修复中：跳过缩略图。但必须立即清理 generating 标记并广播——
+        # 任务出队时已注册进 _generating，残留会导致「全部完成」判定永不成立、
+        # 完成广播被节流吞掉 → 前端任务条卡住（修复完成后 watchdog 重入库会重新排队）
+        with _lock:
+            _generating.discard(tkey)
+            _generating_started.pop(tkey, None)
+        _notify_progress()
         return
 
     if not _video_is_processable(item):

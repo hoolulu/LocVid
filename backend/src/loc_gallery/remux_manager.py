@@ -166,6 +166,20 @@ def _notify_library_sse(library_id: str) -> None:
         pass
 
 
+def _notify_library_progress(library_id: str) -> None:
+    """修复任务状态变化（开始/完成/失败）时广播 progress SSE。
+
+    前端任务条靠 progress 事件触发 refresh 轮询 /remux/status 拿实时百分比；
+    只发 version 事件不会触发任务条刷新 → 修复百分比不显示、完成不通知（用户反馈）。
+    """
+    try:
+        from loc_gallery.server import _broadcast
+
+        _broadcast("progress", library_id)
+    except Exception:
+        pass
+
+
 # 修复成功后删除 .bak 失败时进入待重试队列（如文件被占用/权限问题），由后续轮询重试
 _pending_backups: list[tuple[str, Path]] = []
 
@@ -238,6 +252,7 @@ def _remux_and_finalize(
         finished_at=time.time(),
     )
     _notify_library_sse(job.library_id)
+    _notify_library_progress(job.library_id)
     threading.Thread(
         target=_delete_backup_async,
         args=(job.library_id, backup),
@@ -266,6 +281,7 @@ def _worker(job: RemuxJob) -> None:
             progress_pct=0.0,
             backup_name=backup.name,
         )
+        _notify_library_progress(job.library_id)
 
         if source.is_file() and not backup.is_file():
             timestamps = capture_file_timestamps(source)
@@ -297,6 +313,7 @@ def _worker(job: RemuxJob) -> None:
             message="修复失败",
             finished_at=time.time(),
         )
+        _notify_library_progress(job.library_id)
     finally:
         _exit_remux_job(job.library_id)
 

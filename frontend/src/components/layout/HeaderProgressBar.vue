@@ -11,15 +11,17 @@ const {
   incomingFlash,
   showBar,
   manualExpand,
-  durationBusy,
-  thumbIdle,
+  thumbPaused,
+  completionActive,
   stage,
-  stageLabel,
+  steps,
   pipelineText,
   stagePercent,
-  pipelineSummary,
   progressText,
+  pipelineSummary,
   togglePause,
+  toggleBar,
+  mode,
 } = useThumbProgress()
 
 // 全部处理完成闪示（5s 内显示；超时后 composable 清空 lastCompleted）
@@ -29,15 +31,23 @@ const completedFlash = computed(() => {
   return t('task.allDone')
 })
 
-// 阶段徽标颜色（repair=琥珀 / thumb=主色 / duration=蓝）
-const chipClass = computed(() => {
-  if (stage.value === 'repair') return 'task-chip--remux'
-  if (stage.value === 'duration') return 'task-chip--duration'
+// 进度条轨道颜色（repair=琥珀 / thumb=主色 / duration=蓝）
+const stageClass = computed(() => {
+  if (stage.value === 'repair') return 'task-track--remux'
+  if (stage.value === 'duration') return 'task-track--duration'
   return ''
 })
 
 // 进度条宽度
 const barWidth = computed(() => `${Math.max(0, Math.min(100, stagePercent.value))}%`)
+
+const pctText = computed(() => {
+  // 完成闪示期间 stage 已归 idle，固定显示 100%
+  if (completionActive.value) return '100%'
+  return `${Math.round(stagePercent.value)}%`
+})
+
+const failedCount = computed(() => (thumbProgress.value?.failed as number) ?? 0)
 </script>
 
 <template>
@@ -45,31 +55,50 @@ const barWidth = computed(() => `${Math.max(0, Math.min(100, stagePercent.value)
     class="progress-bar-wrap"
     :class="{ 'progress-bar-collapsed': !showBar }"
   >
-    <!-- 入库提示：新影片检测到，开始处理（5s 闪示） -->
-    <div v-if="incomingFlash" class="task-done-banner task-incoming-banner">
-      <span class="task-incoming-icon">📥</span>
-      <span>{{ t('task.incoming') }}</span>
-    </div>
-
-    <!-- 完成闪示：全部后台任务处理完成（5s） -->
-    <div v-if="completedFlash" class="task-done-banner">
-      <span class="task-done-icon">✓</span>
-      <span>{{ completedFlash }}</span>
-    </div>
-
-    <!-- 单任务条：徽标 + 阶段文本 + 进度条 + 总况汇总（单行，尽量不遮内容） -->
-    <div v-if="stage !== 'idle'" class="task-pipeline">
-      <span class="task-chip" :class="chipClass">{{ stageLabel }}</span>
-      <span class="progress-text task-pipeline-text" :title="pipelineText">
-        {{ pipelineText }}
+    <!-- 处理中（或完成闪示期）：单行 = 状态徽标 + 步骤 stepper + 文本 + 进度条 + 百分比 + 操作 -->
+    <div v-if="stage !== 'idle' || completedFlash" class="task-pipeline">
+      <!-- 入库 / 完成状态徽标（行内显示，不额外占一行） -->
+      <span
+        v-if="incomingFlash"
+        class="task-badge task-badge--incoming"
+        :title="t('task.incoming')"
+      >
+        <span class="task-badge-icon">📥</span>{{ t('task.incomingShort') }}
       </span>
-      <div class="task-pipeline-track">
+      <span
+        v-else-if="completedFlash"
+        class="task-badge task-badge--done"
+        :title="completedFlash"
+      >
+        <span class="task-badge-icon">✓</span>{{ t('task.allDoneShort') }}
+      </span>
+
+      <!-- 入库处理管道步骤：修复 → 缩略图 → 时长 -->
+      <div class="task-steps" aria-label="处理步骤">
+        <template v-for="(s, i) in steps" :key="s.key">
+          <span class="task-step" :class="`task-step--${s.state}`">
+            <span
+              class="task-step-dot"
+              :class="{ 'task-step-dot--current': s.state === 'current' }"
+            >{{ s.state === 'done' ? '✓' : '' }}</span>
+            {{ s.label }}
+          </span>
+          <span v-if="i < steps.length - 1" class="task-step-sep" />
+        </template>
+      </div>
+
+      <span class="progress-text task-pipeline-text" :title="pipelineText || completedFlash || ''">
+        {{ pipelineText || completedFlash || '' }}
+      </span>
+
+      <div class="task-pipeline-track" :class="stageClass">
         <div class="progress-fill" :style="{ width: barWidth }" />
       </div>
-      <span v-if="pipelineSummary" class="task-pipeline-summary">{{ pipelineSummary }}</span>
-      <span v-if="durationBusy || !thumbIdle" class="task-pipeline-actions">
+      <span class="task-pct">{{ pctText }}</span>
+
+      <span class="task-pipeline-actions">
         <button
-          v-if="!thumbProgress?.paused"
+          v-if="stage === 'thumb' && !thumbPaused"
           type="button"
           class="progress-btn"
           @click="togglePause"
@@ -77,7 +106,7 @@ const barWidth = computed(() => `${Math.max(0, Math.min(100, stagePercent.value)
           {{ t('thumb.pause') }}
         </button>
         <button
-          v-else
+          v-else-if="stage === 'thumb' && thumbPaused"
           type="button"
           class="progress-btn"
           @click="togglePause"
@@ -85,19 +114,27 @@ const barWidth = computed(() => `${Math.max(0, Math.min(100, stagePercent.value)
           {{ t('thumb.resume') }}
         </button>
         <button
-          v-if="((thumbProgress?.failed as number) ?? 0) > 0"
+          v-if="failedCount > 0"
           type="button"
-          class="progress-btn"
+          class="progress-btn progress-btn--fail"
           @click="ui.thumbFailedOpen = true"
         >
-          {{ t('thumb.failedCount', { n: thumbProgress?.failed as number }) }}
+          {{ t('thumb.failedCount', { n: failedCount }) }}
+        </button>
+        <button
+          v-if="mode === 'auto'"
+          type="button"
+          class="progress-btn progress-btn--close"
+          :title="t('thumb.statusHide')"
+          @click="toggleBar"
+        >
+          ✕
         </button>
       </span>
     </div>
 
-    <!-- 空闲详情：全空闲时点右上角「缩略图」chip 展开——显示缩略图总况，
-         避免进度条区域空白（此前 stage==='idle' 时内部什么都不渲染） -->
-    <div v-else-if="manualExpand" class="task-pipeline">
+    <!-- 空闲详情：全空闲时点右上角「缩略图」chip 展开——显示缩略图总况 -->
+    <div v-else-if="manualExpand" class="task-pipeline task-pipeline--idle">
       <span class="task-chip">{{ t('task.thumbLabel') }}</span>
       <span class="progress-text task-pipeline-text" :title="progressText">
         {{ progressText }}

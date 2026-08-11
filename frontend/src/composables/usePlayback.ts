@@ -31,6 +31,7 @@ import { createMoviPlayer } from './useMoviPlayer'
 import { usePlaylistLoader } from './usePlaylistLoader'
 import { usePlayerUrlSync } from './usePlayerUrlSync'
 import { resetPlayerRestore } from './usePlayerRestore'
+import { refresh as refreshThumbProgress } from './useThumbProgress'
 
 import type { PlayInfo, SortMode, Video } from '@/types'
 
@@ -155,16 +156,24 @@ export function usePlayback() {
 
     player.showOverlay(t('player.repairing'), t('player.repairStarting'), { indeterminate: true })
 
-    await startRemux(id)
+    try {
 
-    if (player.isStale(session)) return
+      await startRemux(id)
 
-    await waitRemuxDone(id, session)
+      if (player.isStale(session)) return
 
-    if (player.isStale(session)) return
+      await waitRemuxDone(id, session)
 
-    // 修复后的文件已可被 mp4box 正常解析；传 remuxable:false 防止 watchdog 再次触发重封装
-    await startMovi(id, item, session, { remuxable: false })
+      if (player.isStale(session)) return
+
+      // 修复后的文件已可被 mp4box 正常解析；传 remuxable:false 防止 watchdog 再次触发重封装
+      await startMovi(id, item, session, { remuxable: false })
+
+    } finally {
+      // 修复完成/失败后立即刷新任务条：让「修复 → 缩略图」阶段推进、完成态及时呈现
+      // （此前只发 version 事件不触发任务条刷新，导致条卡在旧状态，用户反馈）
+      void refreshThumbProgress()
+    }
 
   }
 
