@@ -53,6 +53,8 @@ def is_running(pid: int) -> bool:
             ["tasklist", "/FI", f"PID eq {pid}"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
         return str(pid) in result.stdout
@@ -88,6 +90,10 @@ def kill_pid(pid: int, *, tree: bool = False) -> None:
             args,
             capture_output=True,
             text=True,
+            # Python 3.13 + 中文 Windows：taskkill 输出为 GBK，按 utf-8 解码会
+            # UnicodeDecodeError 炸掉 reader 线程 → 重启/停止脚本崩溃（restart_service 实测）
+            encoding="utf-8",
+            errors="replace",
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
     else:
@@ -104,6 +110,8 @@ def kill_port_listeners(port: int) -> None:
         ["netstat", "-ano"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
     pids: set[int] = set()
