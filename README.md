@@ -186,7 +186,34 @@ python restart.py
 
 Browser opens `http://127.0.0.1:3460`. Add your library path under **Settings → Library**, then click **Refresh**.
 
-## 8. Usage
+## 8. Update via AI Prompt
+
+Already installed LocVid and want to upgrade your local copy to the latest code in the repository? Copy the **update prompt** below, send it to your AI tool (Cursor / OpenCode / Claude Code / ZCode …) together with your **local project path**, and the AI will follow it through "fetch latest → install dependencies → handle local changes → verify → report what's new". Your local project is then up to date.
+
+````text
+【System prompt】You are the update assistant for the LocVid project. The user has LocVid installed locally and needs to update it to the latest version from the GitHub repository.
+
+Project info:
+- Repository: https://github.com/hoolulu/LocVid
+- Local path: (provided by the user, e.g. D:\LocVid)
+
+Update steps:
+1. Confirm the local project state: check whether the local path is a git repository, the current version (VERSION file), and whether there are uncommitted local changes
+2. Fetch the latest code: `git fetch origin` → inspect the latest remote version and history (git log) → run `git pull origin master` when there are no local conflicts; if there are uncommitted changes, confirm with the user which ones to keep first, and stash or back them up before updating when necessary
+3. Install dependencies: frontend `cd frontend && npm install` (or `npm ci` when the lockfile changed); backend: install new pip dependencies if the requirements changed
+4. Check CHANGELOG.md for any data/config migration needed by the new version (new settings, directory changes, etc.) and notify the user
+5. Verify: frontend `npx vue-tsc -b --force`; backend `python -m py_compile` (for the changed modules)
+6. Done: confirm VERSION is the new version number, tell the user the new version, what changed (refer to CHANGELOG), and whether a manual service restart (restart.py) is needed
+
+Notes:
+- No authentication; the service is local-only at 127.0.0.1
+- Do NOT touch, commit, or delete `data/` (local library data) or `.workbuddy/` (AI working memory)
+- A manual restart is usually required for backend changes to take effect; frontend changes only need a hard refresh (Ctrl+Shift+R)
+````
+
+**Usage:** Copy the whole block above → send it to your AI tool → attach your local project path → the AI completes the update flow, and your local project is upgraded to the latest version.
+
+## 9. Usage
 
 ### Playback page hotkeys (page-level; movi built-in hotkeys disabled)
 
@@ -220,7 +247,7 @@ Browser opens `http://127.0.0.1:3460`. Add your library path under **Settings �
 - **Thumbnail maintenance**: stats / clean orphans / regenerate failed
 - **Rename/move safety**: favorites, history, albums, thumbnails and format cache are **migrated** to the new id — nothing is lost or regenerated
 
-## 9. Settings (global)
+## 10. Settings (global)
 
 Saved to `data/settings.json`; full list in [doc/PRD.md](./doc/PRD.md).
 
@@ -246,11 +273,11 @@ Saved to `data/settings.json`; full list in [doc/PRD.md](./doc/PRD.md).
 | `external_player_path` | (auto) | External player exe (VLC/MPC-HC/PotPlayer…) |
 | `history_retention_days` | 180 | Play history retention |
 
-## 10. Privacy
+## 11. Privacy
 
 Local, single-user by design. When sharing: share `frontend/` `backend/` `scripts/` `doc/` and config templates — **never** `data/` (settings, libraries, logs, thumbs, PIDs). Configure your library paths and PotPlayer path in the Settings page instead of committing them.
 
-## 11. FAQ (excerpt)
+## 12. FAQ (excerpt)
 
 - **Library paths**: configure under Settings → Library (Windows folder picker); `config.py`'s `VIDEO_ROOT` is only a local dev seed
 - **Downloading files show failed thumbnails?** Files are indexed only after they settle; stale failures are reconciled automatically
@@ -259,7 +286,7 @@ Local, single-user by design. When sharing: share `frontend/` `backend/` `script
 - **Where is resume position?** `data/libraries/{library_id}/play_history.json` → `position_sec`
 - **`restart.py` vs `restart.py --build`?** Dev mode with Vite hot-reload vs. production build served by the backend
 
-## 12. Development
+## 13. Development
 
 ```powershell
 cd <project root>
@@ -286,7 +313,7 @@ python -m unittest backend.tests.test_album_store backend.tests.test_album_api b
 python backend/tests/test_auto_new_video.py
 ```
 
-## 13. Changelog & Docs
+## 14. Changelog & Docs
 
 - [CHANGELOG.md](./CHANGELOG.md) — releases (English first, Chinese after)
 - [doc/PRD.md](./doc/PRD.md) — product requirements
