@@ -322,7 +322,7 @@ python backend/tests/test_auto_new_video.py
 
 ## 中文版（Chinese Version）
 
-**本地视频画廊 Web 服务 — 双击启动，浏览器里浏览、搜索、播放你的整个视频库**
+**本地影库 — 双击启动，浏览器里浏览、搜索、播放你的整个视频库**
 
 > Vue 3 架构 · 经典 / 影院布局 · 单端口开发热更新
 

@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
-"""LocVid — 本地视频画廊 Web 服务。"""
+"""LocVid — 本地影库。"""
 
 __version__ = "16.0.1"

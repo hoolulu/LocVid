@@ -91,6 +91,9 @@ rename-loc-gallery.bat
 # ZCode 运行时状态（会话计划等）
 .zcode/
 
+# pi 编码代理运行时（扩展、设置等本地状态，不入库）
+.pi/
+
 # 工作区指令 / 本地测试脚本（仅本机自用，不入库不同步）
 AGENTS.md
 backend/tests/
