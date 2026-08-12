@@ -60,7 +60,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function updateSettings(data: Partial<Settings>, scope: 'global' | 'library' = 'global') {
     // 只发送「实际变化」的键：后端 global 保存会清除这些键的库级覆盖，
     // 若整份 form 全量发送会把用户在其他库的独立配置误删
-    const prev = settings.value || {}
+    const prev: Partial<Settings> = settings.value || {}
     const payload: Partial<Settings> = {}
     for (const key of Object.keys(data) as (keyof Settings)[]) {
       const a = data[key]
