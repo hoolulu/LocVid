@@ -366,11 +366,17 @@ def _is_failed(video_id: str) -> bool:
 
 
 def _should_schedule_auto(video_id: str) -> bool:
-    """自动队列：跳过已有缩略图、已失败项、以及仍在写入的文件。"""
+    """自动队列：跳过已有缩略图、已失败项、待修复（remux）以及仍在写入的文件。"""
     if _has_usable_thumb(video_id) or _is_failed(video_id):
         return False
     item = get_by_id(_lid(), video_id)
     if not item:
+        return False
+    # 待修复/修复中：跳过（修复完成后再做缩略图）——idle scan / schedule 不得抢占，
+    # 否则缩略图先做、文件未修复 → 预览不可用（用户反馈「缩略图先出、播放才修复」）
+    from loc_gallery.remux_manager import is_pending_or_running
+
+    if is_pending_or_running(_lid(), video_id):
         return False
     return _video_is_processable(item)
 
@@ -572,7 +578,14 @@ def sync_index_with_videos() -> list[str]:
                     "error": None,
                     "duration_sec": entry.get("duration_sec") if entry else None,
                 }
-            elif _thumb_file(vid).exists() and _thumb_file(vid).stat().st_size > 0:
+            elif (
+                _thumb_file(vid).exists()
+                and _thumb_file(vid).stat().st_size > 0
+                and entry is not None
+                and entry.get("mtime") == item.mtime
+                and entry.get("size") == item.size
+            ):
+                # 缩略图文件存在且索引 mtime/size 与当前文件一致 → 直接 ready（无需重生成）
                 _idx()[vid] = {
                     "video_id": vid,
                     "path": item.path,
@@ -1865,6 +1878,7 @@ def _process_one(library_id: str, video_id: str) -> None:
         # 待修复/修复中：跳过缩略图。但必须立即清理 generating 标记并广播——
         # 任务出队时已注册进 _generating，残留会导致「全部完成」判定永不成立、
         # 完成广播被节流吞掉 → 前端任务条卡住（修复完成后 watchdog 重入库会重新排队）
+        print(f"[pipe] thumb_skip lib={library_id} vid={video_id} reason=pending_remux", flush=True)
         with _lock:
             _generating.discard(tkey)
             _generating_started.pop(tkey, None)
@@ -1872,6 +1886,16 @@ def _process_one(library_id: str, video_id: str) -> None:
         return
 
     if not _video_is_processable(item):
+        # 文件已不存在（被删除/移走）：不重复入队。否则每 5s Timer 重入队 → 队列永远
+        # 非空 → 前端任务条永远 busy（用户反馈「卡在缩略图环节」）；由 _on_library_changed
+        # 刷新清理索引即可。
+        if not Path(item.path).is_file():
+            print(f"[pipe] thumb_skip lib={library_id} vid={video_id} reason=file_missing", flush=True)
+            with _lock:
+                _generating.discard(tkey)
+                _generating_started.pop(tkey, None)
+            return
+        print(f"[pipe] thumb_retry lib={library_id} vid={video_id} reason=unstable", flush=True)
         with _lock:
             entry = _idx(library_id).get(video_id)
             if entry and entry.get("status") == STATUS_FAILED:
@@ -1921,6 +1945,7 @@ def _process_one(library_id: str, video_id: str) -> None:
             )
         else:
             err = _last_capture_errors.get(video_id, "") or "ffmpeg 生成失败"
+            print(f"[pipe] thumb_fail lib={library_id} vid={video_id} err={err[:120]}", flush=True)
             _set_entry(video_id, status=STATUS_FAILED, error=err)
     except Exception as exc:
         _set_entry(video_id, status=STATUS_FAILED, error=str(exc))

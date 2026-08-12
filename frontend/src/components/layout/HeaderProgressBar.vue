@@ -13,6 +13,8 @@ const {
   manualExpand,
   thumbPaused,
   completionActive,
+  thumbIdle,
+  durationBusy,
   stage,
   steps,
   pipelineText,
@@ -44,7 +46,14 @@ const barWidth = computed(() => `${Math.max(0, Math.min(100, stagePercent.value)
 const pctText = computed(() => {
   // 完成闪示期间 stage 已归 idle，固定显示 100%
   if (completionActive.value) return '100%'
-  return `${Math.round(stagePercent.value)}%`
+  const p = Math.round(stagePercent.value)
+  // 大库 percent 失真：缩略图/时长阶段 percent = 全库 ready/total（数千视频恒≈100%），
+  // 有新视频在生成却显示 100% 会让用户误以为卡住 → 改为显示"处理中"
+  const busyButFull =
+    (stage.value === 'thumb' && p >= 99 && !thumbIdle.value) ||
+    (stage.value === 'duration' && p >= 99 && durationBusy.value)
+  if (busyButFull) return '…'
+  return `${p}%`
 })
 
 const failedCount = computed(() => (thumbProgress.value?.failed as number) ?? 0)

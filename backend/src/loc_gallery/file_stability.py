@@ -74,8 +74,18 @@ def is_pending(path: Path) -> bool:
     return str(path.resolve()) in _pending
 
 
-def is_ready_for_index(path: Path) -> bool:
-    """是否可纳入视频库索引（扫描层快速判断，不阻塞）。"""
+def is_ready_for_index(path: Path, *, notify: bool = True, library_id: str | None = None) -> bool:
+    """是否可纳入视频库索引（扫描层快速判断，不阻塞）。
+
+    notify=True 时，若文件仍在 20s 写入窗口，会登记稳定性检查（稍后回调稳定回调）。
+    仅【扫描上下文】需要该副作用；处理上下文（缩略图/修复/播放策略）绝不能触发——
+    否则每次检查都会重建 5s 稳定定时器 → 稳定回调再跑一遍 _on_video_stable →
+    同一文件被重复处理/重复广播 version+progress（用户反馈「提示条走两遍」）。
+
+    登记时必须绑定库：notify_file_activity 不传库且 _path_libraries 无记录时，
+    _run_stability_check 会回退到「活跃库」→ _on_video_stable 作用到错误库
+    （实测：新建库首次扫描后，回调打到 lib-default，文件入错库/重复入库）。
+    """
     if not path.is_file():
         return False
     if path.suffix.lower() not in VIDEO_EXTENSIONS:
@@ -86,25 +96,35 @@ def is_ready_for_index(path: Path) -> bool:
         return False
     snap = _stat(path)
     if snap and (time.time() - snap[1]) < FILE_RECENT_MODIFY_SEC:
-        notify_file_activity(path)
+        if notify:
+            from loc_gallery.library_context import current_library_id
+
+            notify_file_activity(path, library_id or current_library_id())
         return False
     return True
 
 
 def is_ready_for_processing(path: Path) -> bool:
-    """处理前二次校验（缩略图 / probe），仅路径、无索引快照。"""
-    return is_ready_for_index(path)
+    """处理前二次校验（缩略图 / probe），仅路径、无索引快照。
+
+    不触发 notify：处理流程自身有延迟重试（_process_one 5s Timer / _repair_one 重入队），
+    若在此触发 notify_file_activity 会重建稳定定时器 → 稳定回调重跑完整管道（重复处理）。
+    """
+    return is_ready_for_index(path, notify=False)
 
 
 def is_ready_for_video(path: Path, *, size: int, mtime: float) -> bool:
-    """结合扫描时的 size/mtime，判断文件是否仍在写入。"""
-    if not is_ready_for_index(path):
+    """结合扫描时的 size/mtime，判断文件是否仍在写入。
+
+    处理/统计上下文：不触发 notify（避免稳定性回调重入）。文件的新变化事件会由
+    watchdog 重新驱动处理（_on_video_stable/_on_library_changed）。
+    """
+    if not is_ready_for_index(path, notify=False):
         return False
     snap = _stat(path)
     if not snap:
         return False
     if snap[0] != size or snap[1] != mtime:
-        notify_file_activity(path)
         return False
     return True
 
@@ -135,6 +155,10 @@ def notify_file_activity(path: Path, library_id: str | None = None) -> None:
         _pending.add(key)
         if library_id:
             _path_libraries[key] = library_id
+        elif key in _path_libraries:
+            # is_ready 路径的 notify 不带库：继承已注册的库，
+            # 否则稳定回调反查不到库 → 作用到线程残留的错误库（实测 lib-23178673）
+            library_id = _path_libraries[key]
         old = _timers.pop(key, None)
         if old:
             old.cancel()
@@ -147,10 +171,16 @@ def notify_file_activity(path: Path, library_id: str | None = None) -> None:
 def _invoke_stable_callback(path: Path | None, library_id: str | None) -> None:
     if not _on_stable_callback:
         return
-    if library_id:
-        from loc_gallery.library_context import set_thread_library
+    from loc_gallery.library_context import set_thread_library
 
+    if library_id:
         set_thread_library(library_id)
+    else:
+        # 仍无库（_path_libraries 已被消耗）：显式绑定活跃库，
+        # 避免线程 contextvar 残留读到错误库（实测 _on_video_stable 作用到 lib-23178673）
+        from loc_gallery.library_store import get_active_library_id
+
+        set_thread_library(get_active_library_id())
     _on_stable_callback(path)
 
 

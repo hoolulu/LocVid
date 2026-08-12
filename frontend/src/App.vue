@@ -32,13 +32,23 @@ const gallery = useGalleryStore()
 const library = useLibraryStore()
 const player = usePlayerStore()
 const route = useRoute()
-const { refresh: refreshThumbProgress, notifyIncoming } = useThumbProgress()
+const { refresh: refreshThumbProgress, notifyIncoming, lastCompleted } = useThumbProgress()
 const { tryRestore } = usePlayerRestore()
 const { playIdFromUrl } = usePlayerUrlSync()
 const { closeTip } = usePathTip()
 const { stopPreviewNow } = useHoverPreview()
 
 setupVideoContextActions()
+
+// 全部后台任务处理完成：刷新列表让新视频的缩略图/时长/格式角标即时呈现。
+// 此前缩略图 ready 只广播 progress（任务条）不广播 version（列表刷新），
+// 前端拿不到新 thumbVersion → 图片不更新 → 要手工刷新页面（用户反馈）
+watch(
+  () => lastCompleted.value,
+  (c) => {
+    if (c) void gallery.loadVideos()
+  },
+)
 
 // 路由切换（切页到收藏/历史/专辑等）时清理悬停浮层与预览：
 // 否则浮层跨页残留（钉住模式永久显示），预览 <video> 继续静音播放占带宽（P2）

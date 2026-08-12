@@ -421,11 +421,16 @@ def _on_library_changed(library_id: str) -> None:
     严格串行：需重封装（修复）的视频先进 remux 队列，不进缩略图队列——
     修复完成后文件替换触发 watchdog 重入库，此时才生成缩略图、随后探测时长，
     避免「先做缩略图/时长、修复后又要重做一遍」。
+
+    幂等：仅在扫描缓存实际变化（新增/删除/mtime 或 size 变更）时广播 version，
+    否则修复完成后的补刷新（_exit_remux_job）等场景会让前端无意义地反复 loadVideos。
     """
-    from loc_gallery.remux_manager import enqueue_remux
+    from loc_gallery.remux_manager import enqueue_remux, is_pending_or_running
 
     set_thread_library(library_id)
+    before = {v.id: (v.mtime, v.size) for v in get_all(library_id)}
     refresh_cache(library_id)
+    after = {v.id: (v.mtime, v.size) for v in get_all(library_id)}
     reconcile_deferred_thumbs()
     _prune_user_data(library_id)
     changed_ids = sync_index_with_videos()
@@ -434,8 +439,16 @@ def _on_library_changed(library_id: str) -> None:
         item = get_by_id(library_id, vid)
         if not item:
             continue
+        # 已在修复队列/修复中：跳过（修复完成后再由 remux 流程接手缩略图）
+        if is_pending_or_running(library_id, vid):
+            continue
         try:
             plan = get_playback_plan(Path(item.path))
+            if plan.get("mode") == "pending":
+                # 文件未稳定（mtime 在 20s 窗口）：等稳定回调 _on_video_stable（force_probe
+                # 判定）再处理，不提前排缩略图 —— 否则碎片化新文件先做缩略图/时长
+                # （ffmpeg 能抽帧 → 提示条先到 100%），修复却晚到 → 重复处理（用户反馈）
+                continue
             need_remux, _reason = can_remux_from_plan(plan)
         except Exception:
             need_remux = False
@@ -444,9 +457,21 @@ def _on_library_changed(library_id: str) -> None:
         else:
             thumb_ids.append(vid)
     if thumb_ids:
-        schedule_ids(thumb_ids, Priority.NORMAL)
+        # 直接入队（绕过 mtime 窗口拒绝，_process_one 延迟重试到稳定）——与 _on_video_stable 一致，
+        # 避免依赖 idle scan 补 missing（非 active 库/关闭 idle scan 时缩略图不生成）
+        from loc_gallery.thumb_manager import _enqueue as _thumb_enqueue
+        from loc_gallery.thumb_manager import Priority as ThumbPriority
+
+        for vid in thumb_ids:
+            _thumb_enqueue(vid, ThumbPriority.NORMAL)
         # Duration/format probes deferred — _process_one enqueues per-video after thumb generation
-    _broadcast("version", library_id, str(get_version(library_id)))
+    if before != after:
+        _broadcast("version", library_id, str(get_version(library_id)))
+    print(
+        f"[pipe] lib_changed lib={library_id} before={len(before)} after={len(after)} "
+        f"cache_changed={before != after} changed_ids={len(changed_ids)} thumb_queued={len(thumb_ids)}",
+        flush=True,
+    )
     _broadcast("progress", library_id)
 
 
@@ -503,6 +528,7 @@ def _on_video_stable(library_id: str, path: Path) -> None:
     - auto_tag 只追加不覆盖手动标签
     """
     set_thread_library(library_id)
+    print(f"[pipe] stable_cb lib={library_id} path={Path(path).name if path else '?'} start", flush=True)
     item = upsert_video_from_path(library_id, path)
     if not item:
         _on_library_changed(library_id)
@@ -545,10 +571,59 @@ def _on_video_stable(library_id: str, path: Path) -> None:
             pass
     reconcile_deferred_thumbs()
     changed_ids = sync_index_with_videos()
-    thumb_ids = [item.id]
-    if changed_ids:
-        thumb_ids = list(dict.fromkeys([item.id, *changed_ids]))
-    schedule_ids(thumb_ids, Priority.NORMAL)
+    from loc_gallery.remux_manager import enqueue_remux, is_pending_or_running
+
+    candidate_ids = list(dict.fromkeys([item.id, *changed_ids]))
+    # 严格串行 + 幂等：
+    #  ① 已在修复队列/修复中 → 跳过（不重复 force_probe/广播，修复完成后由 remux 流程接手）
+    #  ② 稳定回调的目标文件不在 changed_ids（sync 已按 mtime/size 确认缩略图一致）→ 已 ready
+    #     → 跳过。不能用 is_thumb_ready 判断：它只检查缩略图文件存在，不校验 mtime/size，
+    #     同路径重新粘贴（旧缩略图残留）会被误判「已处理」而跳过（实测 std_frag 重贴不入处理）
+    #  ③ 稳定后重新判定「需修复」：碎片化/多段 mdat 新文件必须先入修复队列，
+    #     修复完成后再做缩略图/时长。否则缩略图/时长对碎片化文件也能成功（ffmpeg 能抽帧/
+    #     ffprobe 能测时长），但文件未修复 → hover 预览用原生 <video> 直连播不了碎片化 →
+    #     「3 步完成却不可预览」，之后 auto-remux 又补一次修复 → 二次缩略图/时长（用户反馈）
+    remux_ids: list[str] = []
+    final_thumb_ids: list[str] = []
+    for vid in candidate_ids:
+        v = get_by_id(library_id, vid)
+        if not v:
+            continue
+        if is_pending_or_running(library_id, vid):
+            continue
+        if vid == item.id and vid not in changed_ids:
+            continue
+        try:
+            # 稳定回调后文件已写完，结构可安全分析：用 force_probe 跳过 mtime 的
+            # 20s 稳定窗口检查（get_playback_plan 会返回 pending → 又绕过 remux 判定）
+            plan = force_probe_playback_plan(Path(v.path))
+            need_remux, _reason = can_remux_from_plan(plan)
+        except Exception:
+            need_remux = False
+        if need_remux:
+            remux_ids.append(vid)
+        else:
+            final_thumb_ids.append(vid)
+    for vid in remux_ids:
+        enqueue_remux(library_id, vid)
+    if final_thumb_ids:
+        # 直接入队（绕过 _should_schedule_auto 的 mtime 窗口拒绝）：文件可能刚写入未过
+        # 20s 窗口，直接排队让 _process_one 延迟重试到稳定再生成——否则需依赖 idle scan
+        # 补 missing，非 active 库/关闭 idle scan 时缩略图永远不生成（测试发现）
+        from loc_gallery.thumb_manager import _enqueue as _thumb_enqueue
+        from loc_gallery.thumb_manager import Priority as ThumbPriority
+
+        for vid in final_thumb_ids:
+            _thumb_enqueue(vid, ThumbPriority.NORMAL)
+    if not remux_ids and not final_thumb_ids:
+        # 幂等：无待处理 → 不广播。否则文件已 ready 时的重复稳定回调仍广播 version+progress，
+        # 前端反复 loadVideos + 闪「检测到新影片」（用户反馈「提示条走两遍」）
+        print(f"[pipe] stable_cb lib={library_id} vid={item.id} skip=all_ready", flush=True)
+        return
+    print(
+        f"[pipe] stable_cb lib={library_id} vid={item.id} remux={len(remux_ids)} thumb={len(final_thumb_ids)} broadcast",
+        flush=True,
+    )
     _broadcast("version", library_id, str(get_version(library_id)))
     _broadcast("progress", library_id)
 

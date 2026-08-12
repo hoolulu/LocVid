@@ -94,8 +94,9 @@ def _make_id(rel_path: str) -> str:
     return hashlib.md5(rel_path.encode("utf-8")).hexdigest()
 
 
-def _is_video(path: Path) -> bool:
-    return is_ready_for_index(path)
+def _is_video(path: Path, library_id: str | None = None) -> bool:
+    # 扫描路径触发稳定检测必须带库：否则回调回退到活跃库 → 稳定入库作用到错误库
+    return is_ready_for_index(path, library_id=library_id)
 
 
 def _should_skip_dir(path: Path) -> bool:
@@ -143,7 +144,7 @@ def _video_item_from_path(
 
         if is_incomplete_filename(video_path.name):
             return None
-    elif not _is_video(video_path):
+    elif not _is_video(video_path, library_id):
         return None
     try:
         rel = video_path.relative_to(video_root).as_posix()
@@ -218,7 +219,7 @@ def scan_all(video_root: Path, library_id: str) -> list[VideoItem]:
 
     try:
         for entry in video_root.iterdir():
-            if _is_video(entry):
+            if _is_video(entry, library_id):
                 _add_video(entry, "根目录", video_root)
     except OSError:
         return items
@@ -240,7 +241,7 @@ def scan_all(video_root: Path, library_id: str) -> list[VideoItem]:
                 ]
                 for name in filenames:
                     video_path = Path(dirpath) / name
-                    if _is_video(video_path):
+                    if _is_video(video_path, library_id):
                         _add_video(video_path, category, category_dir)
     except OSError:
         pass

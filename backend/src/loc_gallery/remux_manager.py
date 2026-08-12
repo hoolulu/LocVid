@@ -11,7 +11,12 @@ from pathlib import Path
 from loc_gallery.file_ops import delete_backup_file
 from loc_gallery.file_stability import clear_path_pending
 from loc_gallery.library_context import set_thread_library
-from loc_gallery.media_probe import can_remux_from_plan, get_playback_plan, seed_direct_playback_plan
+from loc_gallery.media_probe import (
+    can_remux_from_plan,
+    force_probe_playback_plan,
+    get_playback_plan,
+    seed_direct_playback_plan,
+)
 from loc_gallery.process_util import FileTimestamps, capture_file_timestamps, restore_file_timestamps
 from loc_gallery.remux_core import remux_to_file
 from loc_gallery.scanner import get_by_id, refresh_video_item_stat
@@ -59,6 +64,12 @@ def _exit_remux_job(library_id: str) -> None:
             _active_job_count.pop(library_id, None)
         else:
             _active_job_count[library_id] = count
+        in_batch = library_id in _batch_sessions
+    if count <= 0 and not in_batch:
+        # 单个 remux 结束（非批量会话）：补一次库刷新。
+        # remux 期间该库 watchdog 事件被 is_remux_watcher_paused 丢弃（含删除/替换），
+        # 不补则删除的库记录残留 → 重贴同路径文件（mtime/size 相同）不重新处理（用户反馈）
+        _schedule_post_batch_refresh(library_id)
 
 
 def _schedule_post_batch_refresh(library_id: str) -> None:
@@ -141,6 +152,11 @@ def can_remux_path(path: Path) -> tuple[bool, str]:
     if path.suffix.lower() not in {".mp4", ".m4v"}:
         return False, "仅支持 MP4 文件重封装"
     plan = get_playback_plan(path)
+    if plan.get("mode") == "pending":
+        # mtime 还在 20s 稳定窗口（刚下载/入库分流 enqueue）：结构已可安全分析，
+        # 回退 force_probe —— 否则 start_remux 的校验永远失败，
+        # 新视频修复要等 60s auto-remux 扫描才做（用户反馈「提示条卡住才出现修复进度」）
+        plan = force_probe_playback_plan(path)
     return can_remux_from_plan(plan)
 
 
@@ -251,8 +267,24 @@ def _remux_and_finalize(
         backup_name=None,
         finished_at=time.time(),
     )
+    with _lock:
+        _pending_remux.discard((job.library_id, job.video_id))
     _notify_library_sse(job.library_id)
     _notify_library_progress(job.library_id)
+    # 修复完成 → 重新排队缩略图+时长：文件替换事件发生在 remux 期间（watcher 被
+    # is_remux_watcher_paused 暂停）会被丢弃，不主动触发则缩略图永远 missing，
+    # 用户刷新才看到「又跑一遍缩略图/时长」（用户反馈）
+    try:
+        from loc_gallery.thumb_manager import Priority, _enqueue
+
+        # 直接入队（绕过 _should_schedule_auto 的 mtime 20s 窗口检查）：修复完成时文件
+        # mtime 是「捕获时的下载时间戳」，仍在稳定窗口内 → schedule_ids 返回 0 不排队，
+        # 且非 active 库不在 idle scan 范围 → 缩略图永远 missing（实测）。
+        # _process_one 会处理；若仍判定未稳定则转 LOW 延迟重试，稳定后自动生成。
+        _enqueue(job.video_id, Priority.HIGH)
+    except Exception:
+        pass
+    print(f"[pipe] remux_done lib={job.library_id} vid={job.video_id} thumb_enqueued", flush=True)
     threading.Thread(
         target=_delete_backup_async,
         args=(job.library_id, backup),
@@ -313,6 +345,8 @@ def _worker(job: RemuxJob) -> None:
             message="修复失败",
             finished_at=time.time(),
         )
+        with _lock:
+            _pending_remux.discard((job.library_id, job.video_id))
         _notify_library_progress(job.library_id)
     finally:
         _exit_remux_job(job.library_id)
@@ -382,7 +416,22 @@ def start_remux(library_id: str, video_id: str) -> dict:
         if existing and existing.state in ("queued", "running"):
             resume_existing = True
         elif existing and existing.state == "done":
-            return {"ok": True, "started": False, **_job_to_dict(existing, video_id)}
+            # 走到这里 can_remux_video 已确认文件当前仍需要修复 → done 是失效缓存：
+            # 文件被替换/重贴（同路径同 id）后仍是多段 mdat，但 job 还记着 done，
+            # 直接复用会导致「每次播放提示开始修复却秒开、文件永远不被修复」（用户反馈）
+            _jobs.pop(key, None)
+            for other in _jobs.values():
+                if other.state == "running" and other.video_id != video_id:
+                    return {"ok": False, "error": "已有其他视频正在修复，请稍后再试"}
+            job = RemuxJob(
+                video_id=video_id,
+                library_id=library_id,
+                source=source,
+                state="queued",
+                message="排队中…",
+            )
+            _jobs[key] = job
+            started = True
         else:
             for other in _jobs.values():
                 if other.state == "running" and other.video_id != video_id:
@@ -424,9 +473,13 @@ _AUTO_REMUX_PAUSE_SEC = 5  # 每个文件修复完成后稍候再取下一个
 # 修复失败黑名单：(library_id, video_id, mtime, size) —— 同一文件（未变化）不再反复重试
 _remux_failed_keys: set[tuple[str, str, float, int]] = set()
 
-# 入库分流排队的待修复视频：(library_id, video_id) —— 修复完成（watchdog 重入库）后再做缩略图/时长
+# 入库分流排队的待修复视频：(library_id, video_id) —— 修复完成后再做缩略图/时长
 _remux_queue: list[tuple[str, str]] = []
 _remux_queue_event = threading.Event()
+# 持久「待修复」标记：入队即标记，直到修复真正完成/放弃才清除。
+# 缩略图/时长/空闲扫描据此跳过该视频（is_pending_or_running），
+# 避免「队列被 _repair_one pop 后缩略图抢先做、修复却晚到」的时序混乱（用户反复反馈）
+_pending_remux: set[tuple[str, str]] = set()
 
 
 def enqueue_remux(library_id: str, video_id: str) -> None:
@@ -434,13 +487,19 @@ def enqueue_remux(library_id: str, video_id: str) -> None:
     with _lock:
         if (library_id, video_id) not in _remux_queue:
             _remux_queue.append((library_id, video_id))
+        _pending_remux.add((library_id, video_id))
     _remux_queue_event.set()
+    print(f"[pipe] enqueue_remux lib={library_id} vid={video_id}", flush=True)
 
 
 def is_pending_or_running(library_id: str, video_id: str) -> bool:
     """该视频是否处于「待修复/修复中」——缩略图 worker 据此跳过，等修复完成后再生成。"""
     with _lock:
         if (library_id, video_id) in _remux_queue:
+            return True
+        # 持久待修复标记：队列被 pop 后（_repair_one 处理中/等待稳定）仍视为待修复，
+        # 防止缩略图/时长/空闲扫描抢先处理（用户反馈「缩略图先出、播放才修复」）
+        if (library_id, video_id) in _pending_remux:
             return True
         job = _jobs.get(_job_key(library_id, video_id))
         return job is not None and job.state in ("queued", "running")
@@ -488,7 +547,9 @@ def _auto_remux_loop() -> None:
             _repair_one(*item_key)
         # 队列空 → 常规轮询全库扫描兜底
         _remux_queue_event.clear()
-        _auto_remux_stop.wait(_AUTO_REMUX_INTERVAL_SEC)
+        # 等新入队事件：enqueue_remux 会 set 立即唤醒，否则新下载视频的修复
+        # 会卡到下一个 60s 轮询才被消费（用户反馈「提示条卡住才出现修复进度」）
+        _remux_queue_event.wait(_AUTO_REMUX_INTERVAL_SEC)
         if _auto_remux_stop.is_set():
             break
         # 重试此前删除失败的 .bak（文件被占用/权限恢复后清除）
@@ -518,20 +579,49 @@ def _repair_one(library_id: str, video_id: str) -> None:
     if _auto_remux_stop.is_set():
         return
     set_thread_library(library_id)
+    print(f"[pipe] repair_one lib={library_id} vid={video_id} pop", flush=True)
     try:
         item = get_by_id(library_id, video_id)
         if not item:
             return
         path = Path(item.path).resolve()
         if not path.is_file():
+            # 文件已删除/移走：清除待修复标记并退出（缩略图不再被跳过），
+            # 索引清理由 _on_library_changed 刷新完成；否则 _pending_remux 永久残留
+            # → 该 id 的缩略图/时长永远被跳过，且队列若在等稳定会每 5s 重入队空转
+            with _lock:
+                _pending_remux.discard((library_id, video_id))
             return
         st = path.stat()
         key = (library_id, video_id, st.st_mtime, st.st_size)
         if key in _remux_failed_keys:
             return
-        plan = get_playback_plan(path)
+        # 文件可能仍在写入/刚粘贴（mtime 在 20s 窗口）：先等稳定再修复。
+        # force_probe 对写入中的文件会误判成 standard → 跳过修复（用户反馈
+        # 「缩略图先出、播放才修复/初始化失败」——日志 repair-one not-remuxable kind=standard）
+        from loc_gallery.file_stability import is_ready_for_processing
+
+        if not is_ready_for_processing(path):
+            if not path.is_file():
+                with _lock:
+                    _pending_remux.discard((library_id, video_id))
+                return
+            _auto_remux_stop.wait(_AUTO_REMUX_PAUSE_SEC)
+            enqueue_remux(library_id, video_id)
+            return
+        plan = force_probe_playback_plan(path)
         ok, _reason = can_remux_from_plan(plan)
+        print(f"[pipe] repair_one lib={library_id} vid={video_id} need_remux={ok} kind={plan.get('structure', {}).get('kind')}", flush=True)
         if not ok:
+            # 判定不需修复：若文件 mtime 仍在 20s 窗口内（写入中误判），重入队等稳定再判
+            from loc_gallery.config import FILE_RECENT_MODIFY_SEC
+
+            if time.time() - st.st_mtime < FILE_RECENT_MODIFY_SEC:
+                enqueue_remux(library_id, video_id)
+                return
+            # 文件稳定且确认不需修复：清除待修复标记，缩略图可正常处理
+            with _lock:
+                _pending_remux.discard((library_id, video_id))
             return
         result = start_remux(library_id, video_id)
         if result.get("busy") or result.get("error"):

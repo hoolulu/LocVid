@@ -23,7 +23,7 @@ _HLS_TRANSCODE_VIDEO = {"av1", "hevc", "h265", "vp9"}
 _IMAGE_CODECS = {"png", "mjpeg", "jpeg", "apng", "gif", "bmp", "webp"}
 _BROWSER_NATIVE_EXTENSIONS = {".mp4", ".m4v", ".mov"}
 _WEB_DIRECT_EXTENSIONS = {".webm", ".ogv"}
-_PLAN_VERSION = 17
+_PLAN_VERSION = 19
 _H264_NAL_SIGS = (
     b"\x00\x00\x00\x01\x67", b"\x00\x00\x00\x01\x68", b"\x00\x00\x00\x01\x65",
     b"\x00\x00\x01\x67", b"\x00\x00\x01\x68",
@@ -362,7 +362,13 @@ def _peek_cached_plan(path: Path) -> dict | None:
         return _disk_cache_get(key, st.st_mtime, st.st_size)
 
 def can_remux_from_plan(plan: dict) -> tuple[bool, str]:
-    """根据已缓存的播放计划判断是否可流复制修复。"""
+    """根据已缓存的播放计划判断是否可流复制修复。
+
+    碎片化（带 moof）与多段 mdat 交错（mdat_count>3，部分站点源特征）都需要重封装：
+    - moof 碎片化：mp4box 无法解析 fragment 结构
+    - 多段 mdat 交错：合并为单 mdat 后原生 <video>（悬停预览）与 movi 都稳定
+      （用户反馈大量此类视频且需要预览，判定需修复）
+    """
     kind = (plan.get("structure") or {}).get("kind")
     mdat_count = int((plan.get("structure") or {}).get("mdat_count") or 0)
     fragmented = kind == "fragmented" or mdat_count > 3
