@@ -2,6 +2,16 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.0.2] - 2026-08-20
+
+### Added (English)
+
+- **Playlist hover preview**: hovering an item in the player's playlist sidebar now triggers the same hover preview overlay as the video grid — multi-segment video preview or large thumbnail, honoring the hover-preview setting; clicking a playlist item closes the overlay and stops the preview stream before switching.
+
+### 新增（中文）
+
+- **播放列表悬停预览**：播放器右侧播放列表的条目悬停现在与视频网格一致，弹出同款预览浮层（多段视频预览 / 大缩略图，跟随悬停预览设置）；点击列表条目切歌前会先关闭浮层并停止预览流。
+
 ## [16.0.1] - 2026-08-11
 
 ### Added (English)

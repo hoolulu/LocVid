@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { usePlayback } from '@/composables/usePlayback'
 import { usePlaylistLoader } from '@/composables/usePlaylistLoader'
 import { usePathTip } from '@/composables/usePathTip'
+import { useHoverPreview } from '@/composables/useHoverPreview'
 import { showVideoContextMenu } from '@/composables/useVideoContextActions'
 import { usePlayerStore } from '@/stores/player'
 import { useSettingsStore } from '@/stores/settings'
@@ -19,7 +20,8 @@ const ui = useUiStore()
 const settings = useSettingsStore()
 const { playVideo, cancelPlayback, playAdjacent, reloadPlaylist, wheelSeek } = usePlayback()
 const { loadMore } = usePlaylistLoader()
-const { scheduleShow, onAnchorLeave } = usePathTip()
+const { scheduleShow, onAnchorLeave, pinned, closeTip } = usePathTip()
+const { startPreview, stopPreview, stopPreviewNow } = useHoverPreview()
 
 const playlistOpen = ref(true)
 const moviHost = ref<HTMLElement | null>(null)
@@ -265,7 +267,12 @@ function onWheel(e: WheelEvent) {
 
 async function onPlaylistClick(id: string) {
   const item = player.playlist.find((v) => v.id === id)
-  if (item) await playVideo(item, player.playlist)
+  if (item) {
+    // 切歌：立即关闭悬停浮层与预览流，避免正在播放的视频在浮层里重复预览（与列表点击一致）
+    stopPreviewNow()
+    closeTip()
+    await playVideo(item, player.playlist)
+  }
 }
 
 async function onToggleFavorite() {
@@ -442,8 +449,16 @@ async function onPlaylistSortChange(e: Event) {
             :data-id="v.id"
             @click="onPlaylistClick(v.id)"
             @contextmenu.prevent="showVideoContextMenu($event, v.id)"
-            @mouseenter="(e) => scheduleShow(v, e.currentTarget as HTMLElement, true)"
-            @mouseleave="(e) => onAnchorLeave(e, e.currentTarget as HTMLElement)"
+            @mouseenter="(e) => {
+              scheduleShow(v, e.currentTarget as HTMLElement, true)
+              // 钉住中（浮层保留）不启动新预览；否则与列表一致启动悬停视频预览
+              if (!pinned) startPreview(v)
+            }"
+            @mouseleave="(e) => {
+              onAnchorLeave(e, e.currentTarget as HTMLElement)
+              // 钉住模式：浮层保留（含预览视频继续播放），由关闭按钮统一停止
+              if (settings.settings?.html5_hover_tip_pin === false) stopPreview()
+            }"
           >
             <div class="player-pl-thumb">
               <img
