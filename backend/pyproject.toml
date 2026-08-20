@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loc-gallery"
-version = "16.0.2"
+version = "16.1.0"
 description = "本地影库"
 readme = "README.md"
 requires-python = ">=3.11"

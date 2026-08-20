@@ -146,6 +146,28 @@ export interface Settings {
   [key: string]: unknown
 }
 
+export interface StatsTopPlayed {
+  id: string
+  title: string
+  play_count: number
+}
+
+export interface StatsCategories {
+  name: string
+  count: number
+}
+
+export interface StatsResponse {
+  total_videos: number
+  total_size: number
+  total_duration_sec: number
+  duration_known: number
+  categories: StatsCategories[]
+  favorites_count: number
+  top_played: StatsTopPlayed[]
+  tags: TagInfo[]
+}
+
 export type ViewMode = 'browse' | 'favorites' | 'history' | 'albums' | 'album-detail'
 export type SortMode =
   | 'page'

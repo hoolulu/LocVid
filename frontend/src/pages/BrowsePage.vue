@@ -77,6 +77,7 @@ const breadcrumb = computed(() => {
 
 async function init() {
   gallery.viewMode = 'browse'
+  gallery.continueWatching = false
   gallery.restoreRandomSeed()
   gallery.restoreBrowseState()
   gallery.restoreSort()
@@ -93,6 +94,7 @@ async function init() {
     // 用户从未手动选过排序时，应用设置里的默认排序
     gallery.applyDefaultSort(settings.settings?.default_sort)
     void gallery.loadCategories()
+    void gallery.loadTagOptions()
     if (gallery.category) void gallery.loadFolderTree(gallery.category)
   })
 
@@ -225,6 +227,18 @@ async function onFormatChange(e: Event) {
 
 
 
+async function onTagChange(e: Event) {
+
+  gallery.setTagFilter((e.target as HTMLSelectElement).value)
+
+  await gallery.loadVideos()
+
+  syncUrl()
+
+}
+
+
+
 async function onPageSizeChange(size: number) {
   customPageSize.value = ''
   gallery.setPageSize(size, settings.preset)
@@ -298,6 +312,26 @@ function onVideoContext(e: MouseEvent, videoId: string) {
           <select
 
             class="ml-auto rounded border border-[var(--lg-border)] bg-[var(--lg-bg-secondary)] px-2 py-1 text-sm"
+
+            :value="gallery.tagFilter"
+
+            @change="onTagChange"
+
+          >
+
+            <option value="">{{ t('browse.allTags') }}</option>
+
+            <option v-for="tagInfo in gallery.tagOptions" :key="tagInfo.tag" :value="tagInfo.tag">
+
+              {{ tagInfo.tag }} ({{ tagInfo.count }})
+
+            </option>
+
+          </select>
+
+          <select
+
+            class="rounded border border-[var(--lg-border)] bg-[var(--lg-bg-secondary)] px-2 py-1 text-sm"
 
             :value="gallery.formatFilter"
 

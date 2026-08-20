@@ -73,6 +73,8 @@ onMounted(async () => {
   await album.loadAlbum(id)
   gallery.viewMode = 'album-detail'
   gallery.albumId = id
+  gallery.continueWatching = false
+  gallery.tagFilter = ''
   gallery.category = null
   gallery.page = 1
   await gallery.loadVideos({ sort: albumSort.value })

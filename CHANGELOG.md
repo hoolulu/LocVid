@@ -2,6 +2,28 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.1.0] - 2026-08-21
+
+### Added (English)
+
+- **Continue Watching**: a new top-bar view listing videos with meaningful saved progress (≥15s in, ≥45s from the end), sorted by last-played time; supports searching within the view (including tag matches).
+- **Tag search & tag filter**: search now matches tag names, and the gallery gains a tag filter dropdown fed by `/api/tags`.
+- **Library stats overview**: a new "Overview" view plus `GET /api/stats` — total videos / total size / total duration (summed from cached `duration_sec`, no ffprobe) / category distribution / favorites count / top-10 played / tag distribution.
+
+### Changed (English)
+
+- **Merged "Recently Played" into "Continue Watching"**: removed the "Recently Played" nav page (a noisy superset of Continue Watching); play-history data, resume, most-played, stats and "clear history" are unaffected.
+
+### 新增（中文）
+
+- **继续观看**：顶栏新增「继续观看」视图，列出有实质播放进度（≥15 秒且距片尾 >45 秒）的视频，按最近播放倒序；支持在视图内搜索（含标签命中）。
+- **标签搜索与筛选**：搜索词现可命中标签名，画廊新增「标签」筛选下拉（数据来自 `/api/tags`）。
+- **库级统计概览**：新增「概览」页与 `GET /api/stats` 端点——总视频数 / 总大小 / 总时长（累自已缓存的 `duration_sec`，零 ffprobe 成本）/ 分类分布 / 收藏数 / 播放 Top10 / 标签分布。
+
+### 变更（中文）
+
+- **「最近播放」并入「继续观看」**：移除「最近播放」导航页（它是「继续观看」的含噪超集）；播放历史数据、续播、最多播放、统计与「清空历史」均不受影响。
+
 ## [16.0.2] - 2026-08-20
 
 ### Added (English)

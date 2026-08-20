@@ -24,15 +24,16 @@ export default {
   // ── Navigation ──
   'nav.home': 'Home',
   'nav.favorites': 'Favorites',
-  'nav.history': 'Recently Played',
+  'nav.continue': 'Continue Watching',
   'nav.mostPlayed': 'Most Played',
   'nav.albums': 'Albums',
+  'nav.stats': 'Overview',
   'nav.library': 'Library',
   'nav.mainView': 'Main views',
   'batch.manage': 'Batch',
   'theme.toggleLight': 'Switch to light',
   'theme.toggleDark': 'Switch to dark',
-  'search.hint': 'Search title / filename / category / path',
+  'search.hint': 'Search title / filename / category / tag / path',
 
   // ── Favorites ──
   'fav.add': 'Favorite',
@@ -44,17 +45,32 @@ export default {
   'fav.emptyHint': 'Click ♥ on a video card to favorite it',
 
   // ── History ──
-  'history.title': 'Recently Played',
-  'history.empty': 'No play history yet',
-  'history.emptyHint': 'Videos you play will show up here',
-  'history.clear': 'Clear History',
   'history.cleared': 'Cleared',
+
+  // ── Continue Watching ──
+  'continue.title': 'Continue Watching',
+  'continue.empty': 'No videos in progress',
+  'continue.emptyHint': 'Videos you started but have not finished will show up here',
 
   // ── Most Played ──
   'most.title': 'Most Played',
   'most.empty': 'No play history yet',
   'most.emptyHint': 'Videos you play will be ranked here by count',
   'most.playCount': '{n} plays',
+
+  // ── Stats ──
+  'stats.title': 'Overview',
+  'stats.subtitle': 'Current library',
+  'stats.totalVideos': 'Videos',
+  'stats.totalSize': 'Total size',
+  'stats.totalDuration': 'Total duration',
+  'stats.durationPartial': '{known}/{total} probed',
+  'stats.favorites': 'Favorites',
+  'stats.categories': 'Categories',
+  'stats.topPlayed': 'Most played',
+  'stats.tags': 'Tags',
+  'stats.empty': 'Nothing yet',
+  'stats.playCount': '{n} plays',
 
   // ── Albums ──
   'album.create': 'New Album',
@@ -106,6 +122,7 @@ export default {
   'album.emptyPage': 'No albums yet',
   'album.emptyPageHint': 'Click "New Album" in the top right, or right-click a video and choose "Add to Album"',
   'browse.allCategories': 'All Categories',
+  'browse.allTags': 'All Tags',
 
   // ── Context menu ──
   'menu.props': 'Properties',

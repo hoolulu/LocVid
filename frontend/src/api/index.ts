@@ -63,6 +63,8 @@ export const saveSettings = (data: Partial<Settings>, scope: 'global' | 'library
     body: JSON.stringify({ ...data, scope }),
   })
 
+export const getStats = () => api<import('@/types').StatsResponse>('/stats')
+
 export const getHealth = () => api<{ ok: boolean; boot_id: string }>('/health', { libraryId: null })
 
 export const rescan = () => api<{ version: number; count: number }>('/rescan', { method: 'POST' })

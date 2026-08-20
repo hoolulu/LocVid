@@ -5,8 +5,9 @@ import { ref } from 'vue'
 import { getCategories, getVideos } from '@/api'
 
 import { getFolders } from '@/api/files'
+import { getTags } from '@/api/tags'
 
-import type { Category, FolderTreeResponse, SortMode, Video, ViewMode } from '@/types'
+import type { Category, FolderTreeResponse, SortMode, TagInfo, Video, ViewMode } from '@/types'
 import type { ThemePreset } from '@/stores/settings'
 import { DEFAULT_PAGE_SIZE } from '@/constants/layout'
 import { pageSizeKey, PREFS_KEYS, getSavedBrowseState, setSavedBrowseState } from '@/utils/userPrefs'
@@ -52,6 +53,12 @@ export const useGalleryStore = defineStore('gallery', () => {
   const randomSeed = ref<number | null>(null)
 
   const formatFilter = ref('')
+
+  const tagFilter = ref('')
+
+  const tagOptions = ref<TagInfo[]>([])
+
+  const continueWatching = ref(false)
 
   const page = ref(1)
 
@@ -199,6 +206,10 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     if (formatFilter.value) params.format = formatFilter.value
 
+    if (tagFilter.value) params.tag = tagFilter.value
+
+    if (continueWatching.value) params.continue_watching = true
+
     if (viewMode.value === 'favorites') params.favorites = true
 
     if (viewMode.value === 'history') params.history = true
@@ -310,6 +321,37 @@ export const useGalleryStore = defineStore('gallery', () => {
 
 
 
+  function setTagFilter(value: string) {
+
+    tagFilter.value = value
+
+    page.value = 1
+    regenerateRandomSeedIfNeeded()
+
+  }
+
+
+
+  function setContinueWatching(value: boolean) {
+
+    continueWatching.value = value
+
+    page.value = 1
+
+  }
+
+
+
+  async function loadTagOptions() {
+
+    const data = await getTags()
+
+    tagOptions.value = data.items
+
+  }
+
+
+
   function toggleCategoryExpanded(name: string) {
 
     const next = new Set(expandedCategories.value)
@@ -371,6 +413,12 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     formatFilter,
 
+    tagFilter,
+
+    tagOptions,
+
+    continueWatching,
+
     page,
 
     pageSize,
@@ -413,6 +461,12 @@ export const useGalleryStore = defineStore('gallery', () => {
     setSort,
 
     setFormatFilter,
+
+    setTagFilter,
+
+    setContinueWatching,
+
+    loadTagOptions,
 
     toggleCategoryExpanded,
 

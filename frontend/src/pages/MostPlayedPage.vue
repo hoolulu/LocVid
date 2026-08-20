@@ -20,6 +20,8 @@ const customPageSize = ref('')
 
 onMounted(async () => {
   gallery.viewMode = 'browse'
+  gallery.continueWatching = false
+  gallery.tagFilter = ''
   gallery.category = null
   gallery.folder = null
   gallery.page = 1

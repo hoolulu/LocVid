@@ -18,7 +18,9 @@ const { onPlay, onToggleFavorite } = useGalleryPlay()
 const customPageSize = ref('')
 
 onMounted(async () => {
-  gallery.viewMode = 'history'
+  gallery.viewMode = 'browse'
+  gallery.continueWatching = true
+  gallery.tagFilter = ''
   gallery.category = null
   gallery.folder = null
   gallery.page = 1
@@ -60,7 +62,7 @@ function onVideoContext(e: MouseEvent, videoId: string) {
       <CategorySidebar v-if="settings.preset === 'classic'" />
       <main class="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
         <div class="mb-4 flex shrink-0 items-center gap-3">
-          <h2 class="text-lg font-medium">{{ t('history.title') }}</h2>
+          <h2 class="text-lg font-medium">{{ t('continue.title') }}</h2>
           <span class="text-sm text-[var(--lg-text-muted)]">{{ t('page.count', { n: gallery.total }) }}</span>
         </div>
         <div
@@ -68,8 +70,8 @@ function onVideoContext(e: MouseEvent, videoId: string) {
           class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm text-[var(--lg-text-muted)]"
         >
           <span class="text-3xl opacity-60">▶</span>
-          <span>{{ t('history.empty') }}</span>
-          <span>{{ t('history.emptyHint') }}</span>
+          <span>{{ t('continue.empty') }}</span>
+          <span>{{ t('continue.emptyHint') }}</span>
         </div>
         <div
           v-else

@@ -203,7 +203,7 @@ function onCheckChange(e: Event) {
         <template v-else>{{ video.title }}</template>
       </h3>
       <p
-        v-if="gallery.viewMode === 'history' && video.playedAt"
+        v-if="(gallery.viewMode === 'history' || gallery.continueWatching) && video.playedAt"
         class="mt-1 text-xs text-[var(--lg-text-muted)]"
       >
         {{ new Date(video.playedAt * 1000).toLocaleDateString() }}

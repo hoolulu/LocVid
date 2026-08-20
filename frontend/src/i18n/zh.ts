@@ -24,15 +24,16 @@ export default {
   // ── 导航 ──
   'nav.home': '首页',
   'nav.favorites': '我的收藏',
-  'nav.history': '最近播放',
+  'nav.continue': '继续观看',
   'nav.mostPlayed': '最多播放',
   'nav.albums': '我的专辑',
+  'nav.stats': '概览',
   'nav.library': '视频库',
   'nav.mainView': '主视图',
   'batch.manage': '批量',
   'theme.toggleLight': '切换亮色',
   'theme.toggleDark': '切换暗色',
-  'search.hint': '输入关键字搜索标题 / 文件名 / 分类 / 路径',
+  'search.hint': '输入关键字搜索标题 / 文件名 / 分类 / 标签 / 路径',
 
   // ── 收藏 ──
   'fav.add': '收藏',
@@ -44,17 +45,32 @@ export default {
   'fav.emptyHint': '在视频卡片上点 ♥ 即可收藏',
 
   // ── 历史 ──
-  'history.title': '最近播放',
-  'history.empty': '还没有播放记录',
-  'history.emptyHint': '播放过的视频会出现在这里',
-  'history.clear': '清空播放记录',
   'history.cleared': '已清空',
+
+  // ── 继续观看 ──
+  'continue.title': '继续观看',
+  'continue.empty': '没有看到一半的视频',
+  'continue.emptyHint': '播放后中途退出、尚未看完的视频会出现在这里',
 
   // ── 最多播放 ──
   'most.title': '最多播放',
   'most.empty': '还没有播放记录',
   'most.emptyHint': '播放过的视频会按次数出现在这里',
   'most.playCount': '{n} 次播放',
+
+  // ── 统计概览 ──
+  'stats.title': '统计概览',
+  'stats.subtitle': '当前视频库',
+  'stats.totalVideos': '视频总数',
+  'stats.totalSize': '总大小',
+  'stats.totalDuration': '总时长',
+  'stats.durationPartial': '已探测 {known}/{total}',
+  'stats.favorites': '收藏数',
+  'stats.categories': '分类分布',
+  'stats.topPlayed': '播放最多',
+  'stats.tags': '标签分布',
+  'stats.empty': '暂无数据',
+  'stats.playCount': '{n} 次',
 
   // ── 专辑 ──
   'album.create': '新建专辑',
@@ -106,6 +122,7 @@ export default {
   'album.emptyPage': '还没有专辑',
   'album.emptyPageHint': '点击右上角「新建专辑」，在视频上右键选择「加入专辑」',
   'browse.allCategories': '全部分类',
+  'browse.allTags': '全部标签',
 
   // ── 右键菜单 ──
   'menu.props': '属性',

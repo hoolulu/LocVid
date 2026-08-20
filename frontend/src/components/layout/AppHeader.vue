@@ -23,9 +23,10 @@ const album = useAlbumStore()
 const navItems = computed(() => [
   { name: 'browse', label: t('nav.home'), to: '/' },
   { name: 'favorites', label: t('nav.favorites'), to: '/favorites' },
-  { name: 'history', label: t('nav.history'), to: '/history' },
+  { name: 'continue-watching', label: t('nav.continue'), to: '/continue-watching' },
   { name: 'most-played', label: t('nav.mostPlayed'), to: '/most-played' },
   { name: 'albums', label: t('nav.albums'), to: '/albums' },
+  { name: 'stats', label: t('nav.stats'), to: '/stats' },
 ])
 
 const presetOptions = computed<{ value: ThemePreset; label: string }[]>(() => [
@@ -130,11 +131,14 @@ async function onLibraryChange(e: Event) {
   gallery.category = null
   gallery.folder = null
   gallery.query = '' // 切库必须清搜索词，否则 B 库带着 A 库的关键词（常得空列表）
+  gallery.tagFilter = '' // 标签按库隔离，切库必须清，否则带着 A 库标签筛 B 库
+  gallery.continueWatching = false // 切库后回浏览首页，不再处于"继续观看"视图
   gallery.page = 1
   // 立即清空旧库列表 → 骨架屏接管：否则旧库网格残留到新数据到达才整体替换，
   // 视觉上"所有图片闪烁一次"（用户反馈）
   gallery.videos = []
   await gallery.loadCategories()
+  await gallery.loadTagOptions()
   await gallery.loadVideos()
   await album.loadAlbums()
 }

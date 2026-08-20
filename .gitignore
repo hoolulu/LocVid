@@ -99,3 +99,7 @@ AGENTS.md
 backend/tests/
 frontend/src/**/__tests__/
 frontend/e2e/
+
+# DSH harness runtime state (not project code)
+.dsh-vision-router/
+.dsh-vision-toolkit/

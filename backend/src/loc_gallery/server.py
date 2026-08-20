@@ -97,6 +97,7 @@ from loc_gallery.tag_store import (
     add_tags,
     get_tags_map,
     get_video_tags,
+    get_videos_by_tag,
     import_tags,
     list_all_tags,
     prune_missing as prune_tags,
@@ -965,7 +966,8 @@ def _filter_videos_list(
     if favorites or history or album_id:
         if q:
             query = q.lower().strip()
-            items = [v for v in items if _search_match(v, query)]
+            tag_map = get_tags_map(library_id)
+            items = [v for v in items if _search_match(v, query, tag_map)]
 
     if format and format not in ("", "all"):
         items = filter_items_by_format(items, format, library_id)
@@ -1002,6 +1004,36 @@ def _filter_cache_key(
     )
 
 
+_CONTINUE_WATCH_MIN_SEC = 15.0
+_CONTINUE_WATCH_END_MARGIN_SEC = 45.0
+
+
+def _continue_watching_ids(library_id: str, q: str | None = None) -> list[str]:
+    """继续观看：有播放进度、且距片尾还有余量的视频，按最近播放倒序。"""
+    hist_map = get_history_map(library_id)
+    thumb_index, _, _ = snapshot_thumb_list_state(library_id)
+    query = (q or "").lower().strip() or None
+    tag_map = get_tags_map(library_id) if query else None
+    entries: list[tuple[float, str]] = []
+    for vid, entry in hist_map.items():
+        pos = float(entry.get("position_sec") or 0)
+        if pos < _CONTINUE_WATCH_MIN_SEC:
+            continue
+        item = get_by_id(library_id, vid)
+        if not item:
+            continue
+        if query and not _search_match(item, query, tag_map):
+            continue
+        dur = entry.get("duration_sec") or duration_sec_from_index_entry(
+            thumb_index.get(vid), mtime=item.mtime, size=item.size
+        )
+        if dur and dur > 0 and pos >= float(dur) - _CONTINUE_WATCH_END_MARGIN_SEC:
+            continue
+        entries.append((float(entry.get("played_at") or 0), vid))
+    entries.sort(key=lambda x: -x[0])
+    return [vid for _, vid in entries]
+
+
 def _get_filtered_video_ids(
     library_id: str,
     *,
@@ -1014,8 +1046,13 @@ def _get_filtered_video_ids(
     history: bool = False,
     album_id: str | None = None,
     format: str | None = None,
+    tag: str | None = None,
+    continue_watching: bool = False,
 ) -> list[str]:
     """缓存过滤+排序后的视频 ID 列表，翻页时避免重复全库遍历。"""
+    if continue_watching:
+        return _continue_watching_ids(library_id, q)
+
     key = _filter_cache_key(
         library_id,
         category=category,
@@ -1030,9 +1067,9 @@ def _get_filtered_video_ids(
     )
     ver = get_version(library_id)
     # playcount 排序与收藏/历史/专辑过滤都依赖用户数据，其变化不会 bump 扫描 version
-    # （缓存无法失效）→ 一律不走缓存，每次现算保证列表实时
+    # （缓存无法失效）→ 一律不走缓存，每次现算保证列表实时；标签同理
     user_data_dependent = (
-        sort in ("playcount_desc", "playcount_asc") or favorites or history or album_id
+        sort in ("playcount_desc", "playcount_asc") or favorites or history or album_id or bool(tag)
     )
     if not user_data_dependent:
         hit = _filter_ids_cache.get(key)
@@ -1090,6 +1127,10 @@ def _get_filtered_video_ids(
         fmt_items = [v for vid in ids if (v := get_by_id(library_id, vid))]
         ids = [v.id for v in filter_items_by_format(fmt_items, format, library_id)]
 
+    if tag:
+        tag_ids = set(get_videos_by_tag(library_id, tag))
+        ids = [vid for vid in ids if vid in tag_ids]
+
     if not user_data_dependent:
         _filter_ids_cache[key] = (ver, ids)
 
@@ -1099,9 +1140,9 @@ def _get_filtered_video_ids(
     return ids
 
 
-def _search_match(v, query: str) -> bool:
-    """搜索匹配：标题/分类/子文件夹/文件名（含去扩展名 stem），
-    让"在分类里搜路径关键字"也能命中。"""
+def _search_match(v, query: str, tag_map: dict[str, list[str]] | None = None) -> bool:
+    """搜索匹配：标题/分类/子文件夹/文件名（含去扩展名 stem）+ 标签，
+    让"在分类里搜路径关键字"与"按标签名搜"都能命中。"""
     if query in v.title.lower():
         return True
     if query in v.category.lower():
@@ -1112,7 +1153,13 @@ def _search_match(v, query: str) -> bool:
     if query in fn:
         return True
     stem = fn.rsplit(".", 1)[0] if "." in fn else fn
-    return query in stem
+    if query in stem:
+        return True
+    if tag_map:
+        for tag in tag_map.get(v.id, []):
+            if query in tag.lower():
+                return True
+    return False
 
 
 def _filter_videos(
@@ -1130,7 +1177,8 @@ def _filter_videos(
             items = [v for v in items if v.subfolder == folder or v.subfolder.startswith(folder + "/")]
     if q:
         query = q.lower().strip()
-        items = [v for v in items if _search_match(v, query)]
+        tag_map = get_tags_map(library_id)
+        items = [v for v in items if _search_match(v, query, tag_map)]
 
     return _apply_video_sort(items, sort, seed, library_id)
 
@@ -1491,12 +1539,14 @@ async def api_videos(
     history: bool = False,
     album_id: str | None = None,
     format: str | None = None,
+    tag: str | None = None,
+    continue_watching: bool = False,
     library_id: str = Depends(resolve_library_id),
 ):
     if album_id and not get_album(library_id, album_id):
         raise HTTPException(404, "专辑不存在")
-    filter_category = category if not favorites and not history and not album_id else None
-    filter_folder = folder if not favorites and not history and not album_id else None
+    filter_category = category if not favorites and not history and not album_id and not continue_watching else None
+    filter_folder = folder if not favorites and not history and not album_id and not continue_watching else None
     ids = _get_filtered_video_ids(
         library_id,
         category=filter_category,
@@ -1508,6 +1558,8 @@ async def api_videos(
         history=history,
         album_id=album_id,
         format=format,
+        tag=tag,
+        continue_watching=continue_watching,
     )
     total = len(ids)
 
@@ -1539,11 +1591,66 @@ async def api_videos(
         "totalPages": total_pages,
         "view": (
             "favorites" if favorites else (
-                "history" if history else ("album" if album_id else "browse")
+                "history" if history else (
+                    "album" if album_id else ("continue" if continue_watching else "browse")
+                )
             )
         ),
         "album_id": album_id,
         "library_id": library_id,
+    }
+
+
+@app.get("/api/stats")
+async def api_stats(library_id: str = Depends(resolve_library_id)):
+    """库级统计总览：总量/大小/时长/分类分布/收藏/播放 Top/标签分布。
+
+    全部来自内存索引与既有缓存，不触发任何 ffprobe / 扫描（时长累加自
+    .thumbs/index.json 已缓存的 duration_sec，缺失时长按未知处理）。
+    """
+    items = get_all(library_id)
+    total_videos = len(items)
+    total_size = sum(v.size for v in items)
+
+    cat_counts: dict[str, int] = {}
+    for v in items:
+        cat_counts[v.category] = cat_counts.get(v.category, 0) + 1
+    categories = sorted(
+        ({"name": name, "count": count} for name, count in cat_counts.items()),
+        key=lambda x: -x["count"],
+    )
+
+    thumb_index, _, _ = snapshot_thumb_list_state(library_id)
+    total_duration = 0.0
+    duration_known = 0
+    for v in items:
+        dur = duration_sec_from_index_entry(thumb_index.get(v.id), mtime=v.mtime, size=v.size)
+        if dur:
+            total_duration += dur
+            duration_known += 1
+
+    hist_map = get_history_map(library_id)
+    played: list[dict] = []
+    for vid, entry in hist_map.items():
+        count = int(entry.get("play_count") or 0)
+        if count <= 0:
+            continue
+        item = get_by_id(library_id, vid)
+        if not item:
+            continue
+        played.append({"id": vid, "title": item.title, "play_count": count})
+    played.sort(key=lambda x: -x["play_count"])
+    top_played = played[:10]
+
+    return {
+        "total_videos": total_videos,
+        "total_size": total_size,
+        "total_duration_sec": round(total_duration, 1),
+        "duration_known": duration_known,
+        "categories": categories,
+        "favorites_count": get_favorite_count(library_id),
+        "top_played": top_played,
+        "tags": list_all_tags(library_id),
     }
 
 
