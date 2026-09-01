@@ -18,7 +18,8 @@ import type { SortMode } from '@/types'
 const player = usePlayerStore()
 const ui = useUiStore()
 const settings = useSettingsStore()
-const { playVideo, cancelPlayback, playAdjacent, reloadPlaylist, wheelSeek } = usePlayback()
+const { playVideo, cancelPlayback, playAdjacent, reloadPlaylist, wheelSeek, backgroundPause, resumeFromBackground } =
+  usePlayback()
 const { loadMore } = usePlaylistLoader()
 const { scheduleShow, onAnchorLeave, pinned, closeTip } = usePathTip()
 const { startPreview, stopPreview, stopPreviewNow } = useHoverPreview()
@@ -124,11 +125,13 @@ onMounted(() => {
   // 捕获阶段监听：播放器快捷键独占，任何 stopPropagation 都无法拦截
   document.addEventListener('keydown', onKeydown, true)
   window.addEventListener('pagehide', onPageHide)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeydown, true)
   window.removeEventListener('pagehide', onPageHide)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   observer?.disconnect()
   player.moviPlayer?.destroy()
   player.moviPlayer = null
@@ -222,6 +225,16 @@ function onKeydown(e: KeyboardEvent) {
 function onPageHide() {
   const { onPageHide: save } = usePlayback()
   void save()
+}
+
+// 页面切到后台（最小化/后台标签，进程仍在）：自动暂停 + 停流，防止看不见时继续拉流；
+// 回到前台时显示「点击继续播放」遮罩，由用户手动恢复（非自动，避免打断）
+function onVisibilityChange() {
+  if (document.hidden) {
+    // 悬停预览的 <video> 也是拉 /api/stream 的，后台时一并停掉，避免残留拉流
+    stopPreviewNow()
+    void backgroundPause()
+  }
 }
 
 // 0.1 步进取整，避免浮点累积误差（1.1+0.1 → 1.2 而非 1.2000000000000002）
@@ -340,6 +353,17 @@ async function onPlaylistSortChange(e: Event) {
             >
               <div class="h-full bg-[var(--lg-accent)]" :style="{ width: `${player.overlayProgress}%` }" />
             </div>
+          </div>
+
+          <!-- 后台自动暂停后的恢复遮罩：页面切回前台时显示，点击手动恢复播放 -->
+          <div
+            v-if="player.open && player.backgroundPaused"
+            class="absolute inset-0 z-[5] flex cursor-pointer flex-col items-center justify-center gap-3 bg-[var(--lg-bg-overlay)] text-center"
+            data-testid="player-resume-overlay"
+            @click="void resumeFromBackground()"
+          >
+            <span class="text-lg font-medium">{{ t('player.backgroundPausedTitle') }}</span>
+            <span class="text-sm text-[var(--lg-text-secondary)]">{{ t('player.backgroundPausedHint') }}</span>
           </div>
 
           <p

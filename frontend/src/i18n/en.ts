@@ -305,6 +305,8 @@ export default {
   'player.showPlaylist': 'Show Playlist',
   'player.hidePlaylistTitle': 'Hide playlist panel',
   'player.resumeFrom': 'Resume from {pos}',
+  'player.backgroundPausedTitle': 'Paused in background',
+  'player.backgroundPausedHint': 'Click to resume',
   'player.switched': 'Switched video',
   'player.remuxFailed': 'Repair failed',
   'player.remuxing': 'Repairing…',

@@ -37,6 +37,9 @@ export const usePlayerStore = defineStore('player', () => {
   const playlistCanLoadMore = ref(false)
   const playlistLoading = ref(false)
   const lastPlayedItem = ref<Video | null>(null)
+  // 页面隐藏（visibilitychange → hidden）时后台自动暂停：标记暂停 + 记录恢复位置
+  const backgroundPaused = ref(false)
+  const backgroundResumeAt = ref(0)
 
   function resetPlaylistMeta() {
     playlistContext.value = null
@@ -76,6 +79,9 @@ export const usePlayerStore = defineStore('player', () => {
     playingId.value = item.id
     playingItem.value = item
     lastPlayedItem.value = item
+    // 新一次播放/恢复都会消费掉后台暂停标记（避免残留遮罩错误出现在新视频上）
+    backgroundPaused.value = false
+    backgroundResumeAt.value = 0
     if (list.length) playlist.value = list
     else if (!playlist.value.find((v) => v.id === item.id)) {
       playlist.value = [item]
@@ -87,6 +93,8 @@ export const usePlayerStore = defineStore('player', () => {
     open.value = false
     playingId.value = null
     playingItem.value = null
+    backgroundPaused.value = false
+    backgroundResumeAt.value = 0
     hideOverlay()
     statusText.value = ''
   }
@@ -122,6 +130,8 @@ export const usePlayerStore = defineStore('player', () => {
     playlistCanLoadMore,
     playlistLoading,
     lastPlayedItem,
+    backgroundPaused,
+    backgroundResumeAt,
     resetPlaylistMeta,
     bumpSession,
     isStale,

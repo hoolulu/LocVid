@@ -303,6 +303,8 @@ export default {
   'player.showPlaylist': '显示右侧播放列表',
   'player.hidePlaylistTitle': '隐藏右侧播放列表',
   'player.resumeFrom': '从 {pos} 继续播放',
+  'player.backgroundPausedTitle': '已后台暂停',
+  'player.backgroundPausedHint': '点击继续播放',
   'player.switched': '已切换视频',
   'player.remuxFailed': '修复失败',
   'player.remuxing': '正在修复…',
