@@ -2,6 +2,16 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.1.1] - 2026-09-02
+
+### Fixed (English)
+
+- **Idle thumbnail scan no longer burns CPU while the library is fully ready** (P1): the idle-scan thread previously re-walked the whole library every 0.5 s — calling disk `stat()`/`is_file()` and re-reading `libraries.json` per video even when every thumbnail already existed (measured 40–55% of one core while playing). It now scans only the in-memory missing set (`status != ready`, zero disk calls) on a 5 s cadence, and the thread-local library is bound once per round; playback CPU dropped to ~0%.
+
+### 修复（中文）
+
+- **空闲缩略图扫描不再空转 CPU**（P1）：idle-scan 线程原先每 0.5 秒全库遍历一遍，即便缩略图已全部就绪，仍对每个视频执行磁盘 `stat()`/`is_file()` 并反复读取 `libraries.json`（实测播放时单核占用 40–55%）。现改为每 5 秒仅扫描内存缺口集合（`status != ready`，零磁盘调用），并在每轮绑定线程库上下文；播放时 CPU 占用降至 ~0%。
+
 ## [16.1.0] - 2026-08-21
 
 ### Added (English)
