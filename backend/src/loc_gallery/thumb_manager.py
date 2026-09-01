@@ -18,7 +18,7 @@ from PIL import Image, ImageFilter, ImageStat
 
 from loc_gallery.config import THUMB_WORKERS, FILE_STABLE_CHECK_DELAY, thumb_dir, thumb_index_file
 from loc_gallery.library_context import current_library_id, set_thread_library
-from loc_gallery.library_store import list_libraries
+from loc_gallery.library_store import get_active_library_id, list_libraries
 from loc_gallery.file_stability import is_ready_for_processing, is_ready_for_video
 from loc_gallery.process_util import hidden_subprocess_kwargs, kill_process_tree
 from loc_gallery.scanner import VideoItem, get_all, get_by_id
@@ -332,9 +332,13 @@ def _index_thumb_ready(video_id: str, library_id: str | None = None) -> bool:
 
 
 def _has_usable_thumb(video_id: str, library_id: str | None = None) -> bool:
-    """磁盘上已有可用缩略图（不受队列状态影响）。"""
-    if not _thumb_file_ok(video_id, library_id):
-        return False
+    """磁盘上已有可用缩略图（不受队列状态影响）。
+
+    P1 优化：先查内存索引 status==ready 即短路返回，不再对每个视频做磁盘
+    is_file()/stat() syscall。ready 状态在缩略图成功生成并落盘后写入索引，
+    与磁盘文件生命周期一致；仅当 .jpg 被外部手动删除且索引未更新的极端场景
+    会短暂误判（低频偶发，可接受）。
+    """
     with _lock:
         return _index_thumb_ready(video_id, library_id)
 
@@ -342,6 +346,16 @@ def _has_usable_thumb(video_id: str, library_id: str | None = None) -> bool:
 def _has_usable_thumb_locked(video_id: str, library_id: str | None = None) -> bool:
     """调用方已持有 _lock。"""
     return _thumb_file_ok(video_id, library_id) and _index_thumb_ready(video_id, library_id)
+
+
+def _missing_ids() -> list[str]:
+    """内存索引中缺缩略图的视频 id（status != ready）。
+
+    根治 idle-scan 全库遍历：缺口直接来自 _idx()（与扫描缓存经 sync 对齐，
+    含 missing/queued/generating/failed），零磁盘调用；全库 ready 时返回空列表。
+    调用方需持有 _lock 或仅在读操作下使用。
+    """
+    return [vid for vid, entry in _idx().items() if entry.get("status") != STATUS_READY]
 
 
 def _prune_ready_from_queue() -> int:
@@ -956,8 +970,8 @@ def schedule_category(category: str, priority: Priority = Priority.NORMAL) -> in
 def schedule_all_missing(priority: Priority = Priority.LOW) -> int:
     if not get_setting("thumb_idle_scan"):
         return 0
-    ids = [v.id for v in get_all(_lid()) if not is_thumb_ready(v.id)]
     with _lock:
+        ids = _missing_ids()
         room = max(0, MAX_QUEUE_SIZE - len(_queue))
     if room == 0:
         return 0
@@ -2048,19 +2062,25 @@ def start_idle_scan_background() -> None:
             if _paused or not get_setting("thumb_idle_scan"):
                 time.sleep(2)
                 continue
+            # P0: idle-scan 线程绑定当前活动库，_lid() 走内存 contextvar，
+            # 避免对每个视频多次回调 get_active_library_id() → _load_raw() 读盘。
+            set_thread_library(get_active_library_id())
             _prune_ready_from_queue()
             with _lock:
                 room = max(0, MAX_QUEUE_SIZE - len(_queue) - len(_generating))
             if room > 0:
                 with _lock:
                     busy = set(_generating) | {q.video_id for q in _queue}
+                    missing = _missing_ids()
                 ids = [
-                    v.id for v in get_all(_lid())
-                    if v.id not in busy and _should_schedule_auto(v.id)
+                    vid for vid in missing
+                    if vid not in busy and _should_schedule_auto(vid)
                 ][:room]
                 if ids:
                     schedule_ids(ids, Priority.LOW)
-            time.sleep(0.5)
+            # P2: 0.5s → 5s。idle-scan 仅是兜底：新视频缩略图走 _on_video_stable
+            # 直接 HIGH 入队，不依赖本循环；拉长轮询显著降低空转 CPU。
+            time.sleep(5)
 
     _idle_scan_thread = threading.Thread(target=_run, daemon=True, name="idle-scan")
     _idle_scan_thread.start()
