@@ -18,7 +18,7 @@ import type { SortMode } from '@/types'
 const player = usePlayerStore()
 const ui = useUiStore()
 const settings = useSettingsStore()
-const { playVideo, cancelPlayback, playAdjacent, reloadPlaylist, wheelSeek, backgroundPause, resumeFromBackground } =
+const { playVideo, cancelPlayback, playAdjacent, reloadPlaylist, wheelSeek } =
   usePlayback()
 const { loadMore } = usePlaylistLoader()
 const { scheduleShow, onAnchorLeave, pinned, closeTip } = usePathTip()
@@ -227,13 +227,14 @@ function onPageHide() {
   void save()
 }
 
-// 页面切到后台（最小化/后台标签，进程仍在）：自动暂停 + 停流，防止看不见时继续拉流；
-// 回到前台时显示「点击继续播放」遮罩，由用户手动恢复（非自动，避免打断）
+// 页面切到后台（最小化/后台标签，进程仍在）：不做自动暂停。movi-player 0.3.5 内置
+// 后台播放：隐藏时用 Web Worker 定时器继续音频解复用（画面定格、视频解码已停），
+// 切回前台自动 seek 恢复视频并续播，无需用户再点播放（LocVid 旧逻辑 stopSlice 拆
+// 播放器 + 「点击继续播放」手动恢复遮罩已整体移除）。
+// 悬停预览的原生 <video> 也拉 /api/stream，后台不处理会残留第二路后台音频，仍须停掉。
 function onVisibilityChange() {
   if (document.hidden) {
-    // 悬停预览的 <video> 也是拉 /api/stream 的，后台时一并停掉，避免残留拉流
     stopPreviewNow()
-    void backgroundPause()
   }
 }
 
@@ -353,17 +354,6 @@ async function onPlaylistSortChange(e: Event) {
             >
               <div class="h-full bg-[var(--lg-accent)]" :style="{ width: `${player.overlayProgress}%` }" />
             </div>
-          </div>
-
-          <!-- 后台自动暂停后的恢复遮罩：页面切回前台时显示，点击手动恢复播放 -->
-          <div
-            v-if="player.open && player.backgroundPaused"
-            class="absolute inset-0 z-[5] flex cursor-pointer flex-col items-center justify-center gap-3 bg-[var(--lg-bg-overlay)] text-center"
-            data-testid="player-resume-overlay"
-            @click="void resumeFromBackground()"
-          >
-            <span class="text-lg font-medium">{{ t('player.backgroundPausedTitle') }}</span>
-            <span class="text-sm text-[var(--lg-text-secondary)]">{{ t('player.backgroundPausedHint') }}</span>
           </div>
 
           <p

@@ -183,7 +183,7 @@ export function usePlayback() {
     id: string,
     item: Video,
     session: number,
-    extra: { remuxable?: boolean; resumeAtOverride?: number } = {},
+    extra: { remuxable?: boolean } = {},
   ) {
     destroyMovi()
 
@@ -196,10 +196,7 @@ export function usePlayback() {
     player.showOverlay(t('player.loadingVideo'), t('player.analyzing'), { indeterminate: true })
 
     const resume = settings.settings?.html5_resume_playback !== false
-    // 后台恢复（resumeAtOverride 优先）：暂停时记录了实际 currentTime，
-    // 避免依赖内存 item.playPosition（可能滞后于刚写入后端的位置）
-    const resumeAt =
-      extra.resumeAtOverride ?? (getSavedPosition(item.playPosition, item.playDuration, resume) || 0)
+    const resumeAt = getSavedPosition(item.playPosition, item.playDuration, resume) || 0
 
     const mp = createMoviPlayer(
       host,
@@ -576,71 +573,8 @@ export function usePlayback() {
 
   }
 
-  // 页面隐藏（最小化/切到后台标签，进程仍在）时：保存进度 + 彻底停流，
-  // 避免在用户看不见的页面里继续后台拉流（P2：占用带宽/解码资源）。
-  // 与 onPageHide 不同：页面并未销毁，回来后要能手动恢复，故记录恢复位置。
-  async function backgroundPause() {
-
-    const mp = player.moviPlayer
-
-    const id = player.playingId
-
-    if (mp && id) {
-
-      const t = mp.getCurrentTime()
-
-      if (t > 1) {
-
-        player.backgroundResumeAt = t
-
-        try {
-
-          await savePosition(id, t, mp.getDuration() || undefined)
-
-        } catch {
-
-          /* ignore */
-
-        }
-
-      }
-
-      await stopSlice()
-
-      player.backgroundPaused = true
-
-    }
-
-  }
-
-  // 从后台暂停状态恢复：清标记 + 从记录位置重新起播
-  async function resumeFromBackground() {
-
-    const item = player.playingItem
-
-    const id = player.playingId
-
-    const resumeAt = player.backgroundResumeAt
-
-    player.backgroundPaused = false
-
-    player.backgroundResumeAt = 0
-
-    if (!item || !id) return
-
-    const session = player.bumpSession()
-
-    await stopSlice()
-
-    await startMovi(id, item, session, {
-
-      remuxable: false,
-
-      resumeAtOverride: resumeAt || undefined,
-
-    })
-
-  }
+  // 页面隐藏时的后台播放交给 movi-player 0.3.5 内置逻辑（Worker 定时器续音频、
+  // 回前台自动恢复），LocVid 层不再 stopSlice 拆播放器（背景暂停 + 手动恢复遮罩已移除）。
 
 
 
@@ -661,10 +595,6 @@ export function usePlayback() {
     wheelSeek,
 
     onPageHide,
-
-    backgroundPause,
-
-    resumeFromBackground,
 
   }
 
