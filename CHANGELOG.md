@@ -2,6 +2,16 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.1.2] - 2026-09-08
+
+### Fixed (English)
+
+- **Playback keeps running while the tab is hidden** (P2): the player no longer auto-pauses and tears down the playback chain when the page goes to the background. movi-player 0.3.5's built-in background handling now takes over — audio keeps playing via a Web Worker demux timer (video frame freezes), and switching back to the tab automatically recovers the video and resumes playback, so the manual "click to resume" overlay is gone.
+
+### 修复（中文）
+
+- **切到后台不再暂停播放**（P2）：页面隐藏时播放器不再自动暂停并拆掉播放链路，改由 movi-player 0.3.5 内置后台播放接管——音频经 Web Worker 定时器持续解复用（画面定格），切回前台自动恢复视频并续播；「点击继续播放」手动恢复遮罩已移除。
+
 ## [16.1.1] - 2026-09-02
 
 ### Fixed (English)
