@@ -47,7 +47,7 @@ def _static_cache_control(relative_path: str) -> str | None:
     return None
 
 from loc_gallery.category_store import get_meta, import_category_meta, set_folder_order, set_order, set_sort_mode, set_starred, sort_categories
-from loc_gallery.config import HOST, PORT, EXTERNAL_PLAYER_CANDIDATES, EXTERNAL_PLAYER_PATH, VIDEO_EXTENSIONS, WEB_ROOT
+from loc_gallery.config import HOST, PORT, EXTERNAL_PLAYER_CANDIDATES, EXTERNAL_PLAYER_PATH, FILE_RECENT_MODIFY_SEC, VIDEO_EXTENSIONS, WEB_ROOT
 from loc_gallery.range_stream import stream_file_with_disconnect
 
 
@@ -520,6 +520,135 @@ def _is_id_based_library(library_id: str) -> bool:
         return False
 
 
+def _resolve_auto_rename_dst(src: Path, suggested: str) -> Path | None:
+    """建议名 → 去重后的目标路径。
+
+    - 建议名与当前名一致 → None（已规范，幂等）
+    - 目标不存在 → 直接用建议名
+    - 目标已存在（同目录已有同名不同文件，如先后两个版本的 DVDES-543）→
+      自动加 ` (1)`/` (2)`… 后缀，而不是静默跳过（旧行为导致改名丢失）。
+    """
+    from loc_gallery.file_ops import _sanitize_name
+
+    try:
+        safe = _sanitize_name(suggested)
+    except ValueError:
+        return None
+    if not safe or safe == src.name:
+        return None
+    dst = src.with_name(safe)
+    if not dst.exists():
+        return dst
+    stem, ext = os.path.splitext(safe)
+    for i in range(1, 1000):
+        cand = src.with_name(f"{stem} ({i}){ext}")
+        if not cand.exists():
+            return cand
+    return None
+
+
+def _apply_auto_naming(library_id: str, item):
+    """编号影片库幂等自动命名 + 追加打标，返回最新 item。
+
+    - 只分析一次：用改名前原始文件名分析（改名后规范名会丢掉题材/来源词，标签缺失）
+    - 改名数据迁移在 refresh_cache 之前（防 watchdog prune 竞态，与手动改名一致）
+    - 打标只追加不覆盖；任何失败都不抛异常、不影响入库主流程
+    """
+    try:
+        analysis = analyze_filename(item.filename)
+    except Exception:
+        return item
+    suggested = (analysis or {}).get("suggested_name")
+    if suggested and suggested != item.filename:
+        try:
+            from loc_gallery.file_ops import _migrate_video_id
+
+            src = Path(item.path)
+            if not src.is_file():
+                return item
+            dst = _resolve_auto_rename_dst(src, suggested)
+            if dst is not None:
+                old_id = item.id
+                src.rename(dst)
+                _migrate_video_id(library_id, old_id, dst)
+                refresh_cache(library_id)
+                new_item = upsert_video_from_path(library_id, dst)
+                if new_item is not None:
+                    item = new_item
+        except Exception:
+            pass
+    try:
+        tags = (analysis or {}).get("tags") or []
+        if tags:
+            add_tags(library_id, item.id, tags)
+    except Exception:
+        pass
+    return item
+
+
+def _backfill_auto_naming(library_id: str) -> int:
+    """启动/检测补偿：关服务期间下载的文件只被索引、没走过稳定回调，这里补改名+补打标。
+
+    - 仅编号影片库；标题影片库直接返回 0
+    - 只处理已稳定文件（size>0 且 mtime 出了 FILE_RECENT_MODIFY_SEC 窗口），
+      下载中/刚写入的不碰（避免 Windows 下 rename 被占用句柄打断下载）
+    - 跳过不完整文件名与 remux 队列中文件；重名自动加后缀
+    - 已规范名但缺标签的也补打标。返回实际改名数。
+    """
+    if not _is_id_based_library(library_id):
+        return 0
+    set_thread_library(library_id)
+    from loc_gallery.file_stability import is_incomplete_filename
+    from loc_gallery.remux_manager import is_pending_or_running
+
+    renamed = 0
+    try:
+        videos = list(get_all(library_id))
+    except Exception:
+        return 0
+    for v in videos:
+        try:
+            path = Path(v.path)
+        except Exception:
+            continue
+        if path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        if is_incomplete_filename(path.name):
+            continue
+        try:
+            analysis = analyze_filename(path.name)
+        except Exception:
+            continue
+        suggested = (analysis or {}).get("suggested_name")
+        tags = (analysis or {}).get("tags") or []
+        if suggested and suggested != path.name:
+            try:
+                st = path.stat()
+            except OSError:
+                continue
+            if st.st_size <= 0 or (time.time() - st.st_mtime) < FILE_RECENT_MODIFY_SEC:
+                continue
+            try:
+                if is_pending_or_running(library_id, v.id):
+                    continue
+            except Exception:
+                pass
+            fresh = get_by_id(library_id, v.id)
+            new_item = _apply_auto_naming(library_id, fresh or v)
+            if new_item is not None and new_item.id != v.id:
+                renamed += 1
+        elif tags:
+            # 已规范名但缺标签（同样是关服务期间落下的）：无标签才补写，避免每次全量写盘
+            try:
+                if not get_video_tags(library_id, v.id):
+                    add_tags(library_id, v.id, tags)
+            except Exception:
+                pass
+    if renamed:
+        print(f"[pipe] backfill_rename lib={library_id} renamed={renamed}", flush=True)
+    return renamed
+
+
 def _on_video_stable(library_id: str, path: Path) -> None:
     """单个文件写入稳定后增量入库（新下载完成）。
 
@@ -535,41 +664,9 @@ def _on_video_stable(library_id: str, path: Path) -> None:
         _on_library_changed(library_id)
         return
     if _is_id_based_library(library_id):
-        # ① 自动命名（幂等）：新下载的裸文件名 → 规范名；已规范/不可识别则不动
-        # 分析仅做一次：原始文件名信息最全，改名后再分析会丢掉已被规范名去除的
-        # 题材/来源词（如 [SpankBang] HMN-531 中出 → HMN-531），导致标签缺失
-        try:
-            analysis = analyze_filename(item.filename)
-        except Exception:
-            analysis = {"suggested_name": None, "tags": []}
-        suggested = analysis.get("suggested_name")
-        if suggested and suggested != item.filename:
-            try:
-                from loc_gallery.file_ops import _sanitize_name, _migrate_video_id
-                from loc_gallery.scanner import refresh_cache
-
-                # 防重入 + 幂等：只有建议名确实不同才改名（改名后重跑会返回已规范）
-                src = Path(item.path)
-                dst = src.with_name(suggested)
-                if not dst.exists():
-                    safe = _sanitize_name(suggested)
-                    if safe and safe != src.stem:
-                        old_id = item.id
-                        src.rename(dst)
-                        _migrate_video_id(library_id, old_id, dst)
-                        refresh_cache(library_id)
-                        new_item = upsert_video_from_path(library_id, dst)
-                        if new_item:
-                            item = new_item
-            except Exception:
-                # 自动命名失败绝不影响入库主流程
-                pass
-        # ② 自动打标（追加式，不覆盖手动标签）
-        try:
-            if analysis.get("tags"):
-                add_tags(library_id, item.id, analysis["tags"])
-        except Exception:
-            pass
+        # ① 自动命名（幂等，重名自动加后缀）+ ② 自动打标（追加式）：
+        # 与启动/重扫补偿（_backfill_auto_naming）同一份逻辑
+        item = _apply_auto_naming(library_id, item)
     reconcile_deferred_thumbs()
     changed_ids = sync_index_with_videos()
     from loc_gallery.remux_manager import enqueue_remux, is_pending_or_running
@@ -731,6 +828,13 @@ async def lifespan(app: FastAPI):
             if lib.id == active_id:
                 continue
             refresh_cache(lib.id)
+        # 关服务期间下载的文件补偿改名+打标（含激活库；仅编号影片库生效，
+        # 只处理已稳定文件）。放 prune 之前：改名迁移用户数据先于孤儿清理。
+        for lib in list_libraries():
+            try:
+                _backfill_auto_naming(lib.id)
+            except Exception:
+                pass
         for lib in list_libraries():
             if lib.id == active_id:
                 continue
@@ -1358,6 +1462,9 @@ def _do_rescan(library_id: str) -> None:
     # （ready 全丢）、孤儿清理作用错库。必须在此显式设置线程库。
     set_thread_library(library_id)
     refresh_cache(library_id)
+    # 关服务期间下载的文件只被索引、没走过稳定回调的自动命名+打标，这里补偿
+    # （仅编号影片库；只处理已稳定文件，下载中的不动）
+    _backfill_auto_naming(library_id)
     reconcile_deferred_thumbs()
     sync_index_with_videos()
     cleanup_orphans()
