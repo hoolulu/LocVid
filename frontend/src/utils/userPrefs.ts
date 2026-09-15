@@ -5,7 +5,6 @@ export const PREFS_KEYS = {
   preset: 'loc-gallery-preset',
   sort: 'loc-gallery-sort',
   pageSize: 'loc-gallery-page-size',
-  randomSeed: 'loc-gallery-random-seed',
   settingsTab: 'loc-gallery-settings-tab',
   browse: 'loc-gallery-browse',
 } as const

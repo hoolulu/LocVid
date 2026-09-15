@@ -168,6 +168,12 @@ export default {
   // ── Page common ──
   'page.playAll': 'Play All',
   'page.randomPlay': 'Shuffle Play',
+  'page.reroll': 'Reshuffle',
+  'page.rerollReset': 'Restart Round',
+  'page.rerollResetHint': 'Clear this round and start over from all videos',
+  'page.rerollRemaining': '{n} not shown yet in this round',
+  'page.roundRestarted': 'Round complete — started a new round',
+  'page.roundReset': 'Round restarted',
   'page.playing': 'Playing',
   'page.noResults': 'No matching videos',
   'page.noResultsHint': 'Try adjusting search or filters',

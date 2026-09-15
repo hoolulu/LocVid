@@ -127,6 +127,11 @@ def history_file(library_id: str) -> Path:
     return library_data_dir(library_id) / "play_history.json"
 
 
+def random_round_file(library_id: str) -> Path:
+    """随机列表「本轮已展示」记录（按库 + 筛选范围隔离）。"""
+    return library_data_dir(library_id) / "random_round.json"
+
+
 def category_meta_file(library_id: str) -> Path:
     return library_data_dir(library_id) / "category_meta.json"
 

@@ -20,6 +20,7 @@ import { useGalleryStore } from '@/stores/gallery'
 import { useLibraryStore } from '@/stores/library'
 import { useSettingsStore } from '@/stores/settings'
 import { usePlayerStore } from '@/stores/player'
+import { useUiStore } from '@/stores/ui'
 import { scanFormat } from '@/api/thumbs'
 import type { SortMode } from '@/types'
 import { getGallerySortOptions } from '@/constants/sort'
@@ -37,6 +38,14 @@ const library = useLibraryStore()
 const settings = useSettingsStore()
 
 const player = usePlayerStore()
+
+const ui = useUiStore()
+
+// 「换一批」按钮提示：显示本轮还剩多少没展示（硬排除后这是有意义的进度）
+const rerollTitle = computed(() => {
+  const st = gallery.randomState
+  return st ? t('page.rerollRemaining', { n: st.remaining }) : ''
+})
 
 const { onPlay, onToggleFavorite, onRandomPlay } = useGalleryPlay()
 const { syncUrl, applyRouteQuery, selectCategory } = useBrowseNavigation()
@@ -78,9 +87,10 @@ const breadcrumb = computed(() => {
 async function init() {
   gallery.viewMode = 'browse'
   gallery.continueWatching = false
-  gallery.restoreRandomSeed()
   gallery.restoreBrowseState()
   gallery.restoreSort()
+  // 随机列表的种子不持久化：每次进页面/刷新重掷一批，避免永远看到同一份排列（同批次内翻页顺序仍稳定）
+  gallery.regenerateRandomSeedIfNeeded()
   gallery.restorePageSize(settings.preset)
 
   applyRouteQuery(
@@ -99,6 +109,7 @@ async function init() {
   })
 
   await videosTask
+  notifyRoundRestart()
   syncUrl()
 }
 
@@ -212,6 +223,24 @@ async function onSortChange(e: Event) {
 }
 
 
+
+async function onRerollRandom() {
+  gallery.rerollRandomSeed()
+  await gallery.loadVideos()
+  notifyRoundRestart()
+  syncUrl()
+}
+
+async function onResetRound() {
+  await gallery.resetRandomRound()
+  ui.showToast(t('page.roundReset'))
+  syncUrl()
+}
+
+/** 本轮池子抽完时后端会自动开新一轮，这里给个提示（否则用户会以为"又开始重复了"） */
+function notifyRoundRestart() {
+  if (gallery.randomState?.reset) ui.showToast(t('page.roundRestarted'))
+}
 
 async function onFormatChange(e: Event) {
 
@@ -364,6 +393,38 @@ function onVideoContext(e: MouseEvent, videoId: string) {
             </option>
 
           </select>
+
+          <button
+
+            v-if="gallery.sort === 'random'"
+
+            class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm lg-hover"
+
+            :title="rerollTitle"
+
+            @click="onRerollRandom"
+
+          >
+
+            {{ t('page.reroll') }}
+
+          </button>
+
+          <button
+
+            v-if="gallery.sort === 'random' && (gallery.randomState?.shown ?? 0) > 0"
+
+            class="rounded border border-[var(--lg-border)] px-3 py-1 text-sm lg-hover"
+
+            :title="t('page.rerollResetHint')"
+
+            @click="onResetRound"
+
+          >
+
+            {{ t('page.rerollReset') }}
+
+          </button>
 
           <button
 

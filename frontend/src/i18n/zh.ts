@@ -168,6 +168,12 @@ export default {
   // ── 页面通用 ──
   'page.playAll': '播放全部',
   'page.randomPlay': '随机播放',
+  'page.reroll': '换一批',
+  'page.rerollReset': '重来一轮',
+  'page.rerollResetHint': '清空本轮记录，重新从全部视频开始轮',
+  'page.rerollRemaining': '本轮还剩 {n} 个未展示',
+  'page.roundRestarted': '本轮已轮完，已开始新一轮',
+  'page.roundReset': '已重来一轮',
   'page.playing': '正在播放',
   'page.noResults': '没有符合条件的视频',
   'page.noResultsHint': '试试调整搜索或筛选条件',

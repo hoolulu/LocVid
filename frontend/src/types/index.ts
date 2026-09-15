@@ -65,6 +65,19 @@ export interface Video {
   tags?: string[]
 }
 
+export interface RandomState {
+  /** 当前筛选下的总池 */
+  pool: number
+  /** 本批可抽取数量（已排除本轮已展示） */
+  batch: number
+  /** 本轮已展示数量 */
+  shown: number
+  /** 本轮剩余未展示数量 */
+  remaining: number
+  /** 本次请求是否触发了「池子抽完自动开新一轮」 */
+  reset: boolean
+}
+
 export interface VideosResponse {
   items: Video[]
   total: number
@@ -74,6 +87,8 @@ export interface VideosResponse {
   view?: string
   album_id?: string
   library_id?: string
+  /** 随机列表特有：本轮进度（非随机排序不返回） */
+  random_state?: RandomState
 }
 
 export interface PlayInfo {

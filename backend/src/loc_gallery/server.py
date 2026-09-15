@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import json
 import mimetypes
 import os
 import random
@@ -138,6 +139,11 @@ from loc_gallery.history_store import (
     record_play,
     remove_history,
     save_position,
+)
+from loc_gallery.random_round_store import (
+    get_shown as get_random_shown,
+    mark_shown as mark_random_shown,
+    reset_scope as reset_random_scope,
 )
 from loc_gallery.format_index import (
     enqueue_missing_format_probe,
@@ -1171,9 +1177,10 @@ def _get_filtered_video_ids(
     )
     ver = get_version(library_id)
     # playcount 排序与收藏/历史/专辑过滤都依赖用户数据，其变化不会 bump 扫描 version
-    # （缓存无法失效）→ 一律不走缓存，每次现算保证列表实时；标签同理
+    # （缓存无法失效）→ 一律不走缓存，每次现算保证列表实时；标签同理。
+    # random 同样依赖播放历史（未看优先权重）→ 不缓存；顺带避免每换一个 seed 就多缓存一份全量 id 列表
     user_data_dependent = (
-        sort in ("playcount_desc", "playcount_asc") or favorites or history or album_id or bool(tag)
+        sort in ("playcount_desc", "playcount_asc", "random") or favorites or history or album_id or bool(tag)
     )
     if not user_data_dependent:
         hit = _filter_ids_cache.get(key)
@@ -1287,12 +1294,147 @@ def _filter_videos(
     return _apply_video_sort(items, sort, seed, library_id)
 
 
+# ── 随机列表：未看优先的加权随机 ──
+# 未看过（无播放记录）权重最高；看过的按「距上次播放越久越靠前、看得越多越靠后」给 0.2~2.0。
+# 权重比 10:1（未看过 20 vs 看过上限 2）是实测调出来的：早期版本 8 vs 6.5 时首屏未看过占比
+# 只有 59%（库内基线 47.6%），拉不开差距——因为"很久以前看过"的片子权重贴着未看过。
+# 现在未看过占首屏约九成，看过的沉到尾部但不会消失（想重温走收藏/最近播放）。
+_RANDOM_UNSEEN_WEIGHT = 20.0
+_RANDOM_SEEN_WEIGHT_MAX = 2.0
+_RANDOM_SEEN_WEIGHT_MIN = 0.2
+_RANDOM_FRESH_DAYS = 30.0
+_RANDOM_PLAY_PENALTY = 0.35
+
+
+def _random_weight(entry: dict | None, now: float) -> float:
+    """随机列表抽样权重：未看过最高，看过随时间回升、随播放次数递减。"""
+    count = int((entry or {}).get("play_count") or 0)
+    played_at = float((entry or {}).get("played_at") or 0)
+    if count <= 0 or played_at <= 0:
+        return _RANDOM_UNSEEN_WEIGHT
+    days = max(0.0, (now - played_at) / 86400.0)
+    recency = (
+        min(days / _RANDOM_FRESH_DAYS, 1.0) * (_RANDOM_SEEN_WEIGHT_MAX - _RANDOM_SEEN_WEIGHT_MIN)
+        + _RANDOM_SEEN_WEIGHT_MIN
+    )
+    return recency / (1.0 + _RANDOM_PLAY_PENALTY * (count - 1))
+
+
+def _shuffle_ids_unseen_first(ids: list[str], seed: int | None, library_id: str | None) -> list[str]:
+    """按 id 列表做未看优先加权随机（随机批次用，见 _random_page_ids）。
+
+    同一 seed + 同一播放历史 → 顺序完全可复现；看完一个视频后其权重下降 → 重掷明显后移。
+    """
+    rng = random.Random(seed) if seed is not None else random
+    hist_map = get_history_map(library_id) if library_id else {}
+    now = time.time()
+    keyed: list[tuple[float, str]] = []
+    for vid in ids:
+        weight = _random_weight(hist_map.get(vid), now)
+        # random() 理论可返回 0.0（0^(1/w) 会让所有并列项沉底且丧失随机性），兜底到极小值
+        u = rng.random() or 1e-12
+        keyed.append((u ** (1.0 / weight), vid))
+    # 稳定排序：key 并列时保持原有相对顺序
+    keyed.sort(key=lambda pair: pair[0], reverse=True)
+    return [vid for _, vid in keyed]
+
+
+def _shuffle_unseen_first(items: list, seed: int | None, library_id: str | None) -> list:
+    """同上的对象列表版（画廊排序/专辑详情通用）。"""
+    if not items:
+        return []
+    by_id = {v.id: v for v in items}
+    order = _shuffle_ids_unseen_first([v.id for v in items], seed, library_id)
+    return [by_id[vid] for vid in order if vid in by_id]
+
+
+# 随机批次：同一 (库, 筛选范围, seed) 复用同一份顺序，翻页才能不重不漏
+_RANDOM_BATCH_LIMIT = 12
+_random_batches: dict[tuple, list[str]] = {}
+
+
+def _random_scope_key(
+    library_id: str,
+    *,
+    category: str | None,
+    folder: str | None,
+    q: str | None,
+    favorites: bool,
+    history: bool,
+    album_id: str | None,
+    format: str | None,
+    tag: str | None,
+    continue_watching: bool,
+) -> str:
+    """本轮记录的隔离范围：同一筛选组合共用一份"已展示"记录，换筛选即开新一轮。"""
+    return json.dumps(
+        [
+            library_id,
+            category or "",
+            folder or "",
+            (q or "").strip().lower(),
+            bool(favorites),
+            bool(history),
+            album_id or "",
+            format or "",
+            tag or "",
+            bool(continue_watching),
+        ],
+        ensure_ascii=False,
+    )
+
+
+def _drop_random_batches(library_id: str, scope: str) -> None:
+    for key in [k for k in _random_batches if k[0] == library_id and k[1] == scope]:
+        _random_batches.pop(key, None)
+
+
+def _random_page_ids(
+    library_id: str,
+    base_ids: list[str],
+    scope: str,
+    seed: int | None,
+    page_size: int,
+) -> tuple[list[str], dict]:
+    """随机列表硬排除：换一批（新 seed）只从「本轮还没展示过」的池子里抽。
+
+    - 同一 (库, 筛选范围, seed) 复用同一份顺序 → 翻页稳定、不重不漏
+    - 本轮池子不足一页时自动开新一轮（清空本轮记录），由 random_state.reset 告知前端
+    """
+    key = (library_id, scope, seed)
+    order = _random_batches.get(key)
+    reset = False
+    if order is not None:
+        # 期间可能改名/删除：批次里已不存在的 id 直接丢弃
+        live = set(base_ids)
+        order = [vid for vid in order if vid in live]
+        if not order:
+            _random_batches.pop(key, None)
+            order = None
+
+    if order is None:
+        shown = get_random_shown(library_id, scope)
+        pool = [vid for vid in base_ids if vid not in shown]
+        need = page_size if page_size and page_size > 0 else 1
+        if len(pool) < need:
+            reset = bool(shown)
+            if shown:
+                reset_random_scope(library_id, scope)
+                # 开新一轮后，旧批次是按旧池子算的，必须作废（否则拿旧 seed 翻页会重复）
+                _drop_random_batches(library_id, scope)
+            pool = list(base_ids)
+        order = _shuffle_ids_unseen_first(pool, seed, library_id)
+        while len(_random_batches) >= _RANDOM_BATCH_LIMIT:
+            _random_batches.pop(next(iter(_random_batches)), None)
+        _random_batches[key] = order
+
+    return order, {"pool": len(base_ids), "batch": len(order), "reset": reset}
+
+
 def _apply_video_sort(items: list, sort: str, seed: int | None = None, library_id: str | None = None) -> list:
     """对已过滤的视频列表应用排序（画廊排序/专辑详情通用）。"""
     if sort == "random":
-        rng = random.Random(seed) if seed is not None else random
-        rng.shuffle(items)
-        return items
+        return _shuffle_unseen_first(items, seed, library_id)
 
     if sort in ("playcount_desc", "playcount_asc"):
         # 按播放次数排序：批量读历史 map（含 play_count），未播过按 0 处理
@@ -1654,13 +1796,15 @@ async def api_videos(
         raise HTTPException(404, "专辑不存在")
     filter_category = category if not favorites and not history and not album_id and not continue_watching else None
     filter_folder = folder if not favorites and not history and not album_id and not continue_watching else None
+    # 随机列表：基础顺序按 mtime_desc 现算（可命中排序索引/缓存），随后再做加权洗牌 + 本轮硬排除
+    base_sort = "mtime_desc" if sort == "random" else sort
     ids = _get_filtered_video_ids(
         library_id,
         category=filter_category,
         folder=filter_folder,
         q=q,
-        sort=sort,
-        seed=seed,
+        sort=base_sort,
+        seed=None if sort == "random" else seed,
         favorites=favorites,
         history=history,
         album_id=album_id,
@@ -1668,6 +1812,22 @@ async def api_videos(
         tag=tag,
         continue_watching=continue_watching,
     )
+    random_state: dict | None = None
+    scope = ""
+    if sort == "random":
+        scope = _random_scope_key(
+            library_id,
+            category=filter_category,
+            folder=filter_folder,
+            q=q,
+            favorites=favorites,
+            history=history,
+            album_id=album_id,
+            format=format,
+            tag=tag,
+            continue_watching=continue_watching,
+        )
+        ids, random_state = _random_page_ids(library_id, ids, scope, seed, page_size)
     total = len(ids)
 
     if page_size <= 0:
@@ -1681,6 +1841,12 @@ async def api_videos(
         start = (page - 1) * page_size
         page_ids = ids[start:start + page_size]
         effective_size = page_size
+
+    if random_state is not None:
+        # 只把真正发给前端的这一页计入「已展示」，没翻到的仍留在本轮池子里
+        shown = mark_random_shown(library_id, scope, list(page_ids))
+        random_state["shown"] = shown
+        random_state["remaining"] = max(0, random_state["pool"] - shown)
 
     page_items = [v for vid in page_ids if (v := get_by_id(library_id, vid))]
 
@@ -1705,7 +1871,41 @@ async def api_videos(
         ),
         "album_id": album_id,
         "library_id": library_id,
+        **({"random_state": random_state} if random_state is not None else {}),
     }
+
+
+@app.post("/api/random/reset")
+async def api_random_reset(
+    category: str | None = None,
+    folder: str | None = None,
+    q: str | None = None,
+    favorites: bool = False,
+    history: bool = False,
+    album_id: str | None = None,
+    format: str | None = None,
+    tag: str | None = None,
+    continue_watching: bool = False,
+    library_id: str = Depends(resolve_library_id),
+):
+    """清空当前筛选范围的「本轮已展示」记录：随机列表重新从全部视频开始轮。"""
+    filter_category = category if not favorites and not history and not album_id and not continue_watching else None
+    filter_folder = folder if not favorites and not history and not album_id and not continue_watching else None
+    scope = _random_scope_key(
+        library_id,
+        category=filter_category,
+        folder=filter_folder,
+        q=q,
+        favorites=favorites,
+        history=history,
+        album_id=album_id,
+        format=format,
+        tag=tag,
+        continue_watching=continue_watching,
+    )
+    cleared = reset_random_scope(library_id, scope)
+    _drop_random_batches(library_id, scope)
+    return {"ok": True, "cleared": cleared}
 
 
 @app.get("/api/stats")

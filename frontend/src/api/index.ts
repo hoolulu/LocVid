@@ -20,6 +20,10 @@ export const getCategories = () => api<CategoriesResponse>('/categories')
 export const getVideos = (params: Record<string, string | number | boolean | undefined | null>) =>
   api<VideosResponse>('/videos', { params })
 
+/** 随机列表「重来一轮」：清空当前筛选范围的本轮已展示记录 */
+export const resetRandomRound = (params: Record<string, string | number | boolean | undefined | null>) =>
+  api<{ ok: boolean; cleared: number }>('/random/reset', { method: 'POST', params })
+
 export const getSearchSuggest = (q: string) =>
   api<{ items: string[] }>('/search/suggest', { params: { q } })
 

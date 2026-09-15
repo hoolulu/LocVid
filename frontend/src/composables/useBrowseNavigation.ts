@@ -29,7 +29,11 @@ export function useBrowseNavigation() {
       gallery.folder = typeof q.folder === 'string' && q.folder ? q.folder : null
     }
     if (typeof q.page === 'string') gallery.page = Number(q.page) || 1
-    if (typeof q.sort === 'string') gallery.sort = q.sort as SortMode
+    if (typeof q.sort === 'string') {
+      gallery.sort = q.sort as SortMode
+      // 从 URL 恢复 sort=random 时必须同时生成 seed：否则分页每页各洗一次 → 翻页重复/漏项
+      gallery.regenerateRandomSeedIfNeeded()
+    }
     if (typeof q.q === 'string') gallery.query = q.q
     if (typeof q.format === 'string') gallery.formatFilter = q.format
     // play 参数由播放器恢复逻辑处理，不在此清除

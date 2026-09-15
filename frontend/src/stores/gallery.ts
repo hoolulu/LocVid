@@ -2,12 +2,12 @@ import { defineStore } from 'pinia'
 
 import { ref } from 'vue'
 
-import { getCategories, getVideos } from '@/api'
+import { getCategories, getVideos, resetRandomRound as resetRandomRoundApi } from '@/api'
 
 import { getFolders } from '@/api/files'
 import { getTags } from '@/api/tags'
 
-import type { Category, FolderTreeResponse, SortMode, TagInfo, Video, ViewMode } from '@/types'
+import type { Category, FolderTreeResponse, RandomState, SortMode, TagInfo, Video, ViewMode } from '@/types'
 import type { ThemePreset } from '@/stores/settings'
 import { DEFAULT_PAGE_SIZE } from '@/constants/layout'
 import { pageSizeKey, PREFS_KEYS, getSavedBrowseState, setSavedBrowseState } from '@/utils/userPrefs'
@@ -15,7 +15,6 @@ import { clearVideoListCache } from '@/utils/videoListCache'
 
 
 
-const RANDOM_SEED_KEY = PREFS_KEYS.randomSeed
 const SORT_KEY = PREFS_KEYS.sort
 
 // 视频列表请求序号：快速连续搜索/翻页时丢弃过期响应，避免慢响应覆盖新结果
@@ -51,6 +50,9 @@ export const useGalleryStore = defineStore('gallery', () => {
   const categorySortMode = ref('custom')
 
   const randomSeed = ref<number | null>(null)
+
+  /** 随机列表本轮状态（已展示/池子/剩余），由后端返回；非随机排序为 null */
+  const randomState = ref<RandomState | null>(null)
 
   const formatFilter = ref('')
 
@@ -94,6 +96,8 @@ export const useGalleryStore = defineStore('gallery', () => {
   function applyDefaultSort(defaultSort?: SortMode) {
     if (defaultSort && !localStorage.getItem(SORT_KEY)) {
       sort.value = defaultSort
+      // 默认排序为随机列表时必须同时生成 seed：否则分页请求每次现洗牌 → 翻页重复/漏项
+      regenerateRandomSeedIfNeeded()
     }
   }
 
@@ -111,9 +115,13 @@ export const useGalleryStore = defineStore('gallery', () => {
     setSavedBrowseState({ category: category.value, folder: folder.value })
   }
 
-  function restoreRandomSeed() {
-    const saved = localStorage.getItem(RANDOM_SEED_KEY)
-    if (saved) randomSeed.value = Number(saved)
+  // 随机种子只在内存里存活：进页面/切筛选时重掷，刷新即换一批新顺序。
+  // （旧实现把 seed 持久化到 localStorage，刷新后恢复同一份 2000 条排列 → 前几页老是同一批视频）
+  function rerollRandomSeed() {
+    if (sort.value !== 'random') return
+    const next = Date.now()
+    randomSeed.value = next === randomSeed.value ? next + 1 : next
+    page.value = 1
   }
 
   function restorePageSize(preset: ThemePreset) {
@@ -136,22 +144,6 @@ export const useGalleryStore = defineStore('gallery', () => {
     pageSize.value = size
     page.value = 1
     localStorage.setItem(pageSizeStorageKey(preset), String(size))
-  }
-
-
-
-  function persistRandomSeed() {
-
-    if (randomSeed.value != null) {
-
-      localStorage.setItem(RANDOM_SEED_KEY, String(randomSeed.value))
-
-    } else {
-
-      localStorage.removeItem(RANDOM_SEED_KEY)
-
-    }
-
   }
 
 
@@ -182,6 +174,21 @@ export const useGalleryStore = defineStore('gallery', () => {
 
 
 
+  // 随机批次的筛选参数（随机列表的「本轮」按这套参数隔离，换筛选即开新一轮）
+  function buildFilterParams(): Record<string, string | number | boolean> {
+    const params: Record<string, string | number | boolean> = {}
+    if (category.value) params.category = category.value
+    if (folder.value) params.folder = folder.value
+    if (query.value.trim()) params.q = query.value.trim()
+    if (formatFilter.value) params.format = formatFilter.value
+    if (tagFilter.value) params.tag = tagFilter.value
+    if (continueWatching.value) params.continue_watching = true
+    if (viewMode.value === 'favorites') params.favorites = true
+    if (viewMode.value === 'history') params.history = true
+    if (viewMode.value === 'album-detail' && albumId.value) params.album_id = albumId.value
+    return params
+  }
+
   async function loadVideos(opts?: { sort?: SortMode }) {
 
     const mySeq = ++videosReqSeq
@@ -196,25 +203,9 @@ export const useGalleryStore = defineStore('gallery', () => {
 
       sort: activeSort,
 
+      ...buildFilterParams(),
+
     }
-
-    if (category.value) params.category = category.value
-
-    if (folder.value) params.folder = folder.value
-
-    if (query.value.trim()) params.q = query.value.trim()
-
-    if (formatFilter.value) params.format = formatFilter.value
-
-    if (tagFilter.value) params.tag = tagFilter.value
-
-    if (continueWatching.value) params.continue_watching = true
-
-    if (viewMode.value === 'favorites') params.favorites = true
-
-    if (viewMode.value === 'history') params.history = true
-
-    if (viewMode.value === 'album-detail' && albumId.value) params.album_id = albumId.value
 
     if (activeSort === 'random' && randomSeed.value != null) params.seed = randomSeed.value
 
@@ -238,6 +229,7 @@ export const useGalleryStore = defineStore('gallery', () => {
       pageSize.value = data.pageSize
 
       totalPages.value = data.totalPages
+      randomState.value = activeSort === 'random' ? (data.random_state ?? null) : null
 
     } finally {
 
@@ -252,10 +244,18 @@ export const useGalleryStore = defineStore('gallery', () => {
 
 
 
+  /** 「重来一轮」：清空后端记录的本轮已展示，再换一批（重新从全部视频开始轮） */
+  async function resetRandomRound() {
+    if (sort.value !== 'random') return
+    await resetRandomRoundApi(buildFilterParams())
+    rerollRandomSeed()
+    await loadVideos()
+  }
+
+  /** 切分类/文件夹/筛选后重掷随机种子：随机列表换一批新顺序（不做持久化） */
   function regenerateRandomSeedIfNeeded() {
     if (sort.value === 'random') {
-      randomSeed.value = Date.now()
-      persistRandomSeed()
+      rerollRandomSeed()
     }
   }
 
@@ -291,15 +291,11 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     if (next === 'random') {
 
-      randomSeed.value = Date.now()
-
-      persistRandomSeed()
+      rerollRandomSeed()
 
     } else {
 
       randomSeed.value = null
-
-      persistRandomSeed()
 
     }
 
@@ -411,6 +407,8 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     randomSeed,
 
+    randomState,
+
     formatFilter,
 
     tagFilter,
@@ -441,7 +439,8 @@ export const useGalleryStore = defineStore('gallery', () => {
 
     folderTrees,
 
-    restoreRandomSeed,
+    rerollRandomSeed,
+    resetRandomRound,
     restoreBrowseState,
     restoreSort,
     applyDefaultSort,
