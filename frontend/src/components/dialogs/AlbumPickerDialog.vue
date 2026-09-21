@@ -236,7 +236,7 @@ function close() {
       <input
         v-model="newAlbumName"
         type="text"
-        placeholder="{{ t('album.newNamePlaceholder') }}"
+        :placeholder="t('album.newNamePlaceholder')"
         class="min-w-0 flex-1 rounded border border-[var(--lg-border)] bg-transparent px-2 py-1 text-sm outline-none focus:border-[var(--lg-accent)]"
         :disabled="creating"
         @keydown.enter="createAlbum"
