@@ -89,7 +89,13 @@ def is_ready_for_index(path: Path, *, notify: bool = True, library_id: str | Non
     if not path.is_file():
         return False
     if path.suffix.lower() not in VIDEO_EXTENSIONS:
-        return False
+        # 下载工具把超长文件名硬截断时会把末尾的 .mp4 一起砍掉（实测 150 字符截断，
+        # 两个 1~2GB 完整 MP4 因无扩展名而永远不入库）。这里按文件头兜底识别：
+        # 只读前 16 字节，且只认 mp4/mkv/avi，图片不会被误收。
+        from loc_gallery.container_sniff import sniff_video_extension
+
+        if sniff_video_extension(path) is None:
+            return False
     if is_incomplete_filename(path.name):
         return False
     if is_pending(path):
@@ -146,7 +152,11 @@ def notify_file_activity(path: Path, library_id: str | None = None) -> None:
     if is_incomplete_filename(path.name):
         return
     if path.suffix.lower() not in VIDEO_EXTENSIONS:
-        return
+        # 同 is_ready_for_index：无扩展名的完整视频（下载工具截断文件名）也要收
+        from loc_gallery.container_sniff import sniff_video_extension
+
+        if sniff_video_extension(path) is None:
+            return
     if not path.exists():
         return
 

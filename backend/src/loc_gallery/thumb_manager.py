@@ -1264,7 +1264,7 @@ def _get_duration_mpegts(video_path: str) -> float | None:
                 "-of", "default=noprint_wrappers=1:nokey=1",
                 video_path,
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
             **hidden_subprocess_kwargs(),
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -1297,7 +1297,7 @@ def _get_duration(video_path: str, file_size: int = 0, *, fast_only: bool = Fals
                     "-of", "default=noprint_wrappers=1:nokey=1",
                     video_path,
                 ],
-                capture_output=True, text=True, timeout=timeout,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
                 **hidden_subprocess_kwargs(),
             )
             if result.returncode == 0 and result.stdout.strip():

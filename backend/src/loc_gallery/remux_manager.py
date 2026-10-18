@@ -422,7 +422,10 @@ def start_remux(library_id: str, video_id: str) -> dict:
             _jobs.pop(key, None)
             for other in _jobs.values():
                 if other.state == "running" and other.video_id != video_id:
-                    return {"ok": False, "error": "已有其他视频正在修复，请稍后再试"}
+                    # 并发占用不是失败：必须返回 busy（不是 error），否则入库分流/后台扫描
+                    # 会把「暂时排不上」当永久失败 —— 分流那边直接放弃且不清 pending 标记，
+                    # 该视频缩略图被永久跳过、任务条卡在 99.x%（实测 JERA-052 等 4 个）
+                    return {"ok": False, "busy": True, "error": "已有其他视频正在修复，请稍后再试"}
             job = RemuxJob(
                 video_id=video_id,
                 library_id=library_id,
@@ -435,7 +438,7 @@ def start_remux(library_id: str, video_id: str) -> dict:
         else:
             for other in _jobs.values():
                 if other.state == "running" and other.video_id != video_id:
-                    return {"ok": False, "error": "已有其他视频正在修复，请稍后再试"}
+                    return {"ok": False, "busy": True, "error": "已有其他视频正在修复，请稍后再试"}
             job = RemuxJob(
                 video_id=video_id,
                 library_id=library_id,
@@ -480,6 +483,9 @@ _remux_queue_event = threading.Event()
 # 缩略图/时长/空闲扫描据此跳过该视频（is_pending_or_running），
 # 避免「队列被 _repair_one pop 后缩略图抢先做、修复却晚到」的时序混乱（用户反复反馈）
 _pending_remux: set[tuple[str, str]] = set()
+# 孤儿标记观察表：(library_id, video_id) → 首次发现不在队列/无 job 的时间
+_orphan_seen: dict[tuple[str, str], float] = {}
+_ORPHAN_PENDING_GRACE_SEC = 90
 
 
 def enqueue_remux(library_id: str, video_id: str) -> None:
@@ -503,6 +509,62 @@ def is_pending_or_running(library_id: str, video_id: str) -> bool:
             return True
         job = _jobs.get(_job_key(library_id, video_id))
         return job is not None and job.state in ("queued", "running")
+
+
+def _prune_orphan_pending() -> int:
+    """清理孤儿待修复标记：既不在修复队列、也没有排队/运行中的 job。
+
+    正常流程里 _repair_one 从 pop 到 start_remux 之间会短暂出现这种状态，
+    所以必须连续观察一段时间（_ORPHAN_PENDING_GRACE_SEC）才算孤儿。
+    不清的后果：该视频缩略图/时长被永久跳过，任务条永远 busy（实测）。
+    """
+    global _orphan_seen
+    now = time.time()
+    with _lock:
+        queued = set(_remux_queue)
+        busy_keys = {
+            (job.library_id, job.video_id)
+            for job in _jobs.values()
+            if job.state in ("queued", "running")
+        }
+        pending = set(_pending_remux)
+    live = queued | busy_keys
+    orphans = {key for key in pending if key not in live}
+    removed: list[tuple[str, str]] = []
+    with _lock:
+        # 记录首次观察时间；消失的条目从观察表里删掉
+        for key in list(_orphan_seen):
+            if key not in orphans:
+                _orphan_seen.pop(key, None)
+        for key in orphans:
+            first = _orphan_seen.setdefault(key, now)
+            if now - first >= _ORPHAN_PENDING_GRACE_SEC:
+                _pending_remux.discard(key)
+                _orphan_seen.pop(key, None)
+                removed.append(key)
+    for library_id, video_id in removed:
+        print(
+            f"[pipe] pending_orphan_cleared lib={library_id} vid={video_id}",
+            flush=True,
+        )
+    return len(removed)
+
+
+def _has_running_job() -> bool:
+    with _lock:
+        return any(job.state == "running" for job in _jobs.values())
+
+
+def _wait_running_job_done(max_wait: float = 1800.0) -> None:
+    """等当前正在修复的视频结束（修复单并发，排队项只能等）。
+
+    不等就会变成：每项 pop → busy → 重新入队 → 又 pop，5s 一轮空转不停。
+    """
+    started = time.monotonic()
+    while not _auto_remux_stop.is_set() and _has_running_job():
+        if time.monotonic() - started > max_wait:
+            return
+        _auto_remux_stop.wait(1.0)
 
 
 def _pop_remux_queue() -> tuple[str, str] | None:
@@ -544,7 +606,10 @@ def _auto_remux_loop() -> None:
             item_key = _pop_remux_queue()
             if item_key is None:
                 break
-            _repair_one(*item_key)
+            # busy：已重新排队到队尾，继续取下一个（同一时刻只有一个 job 在跑，
+            # 轮转几圈后正在跑的那个完成，就能真正开工）
+            if _repair_one(*item_key) == "busy":
+                continue
         # 队列空 → 常规轮询全库扫描兜底
         _remux_queue_event.clear()
         # 等新入队事件：enqueue_remux 会 set 立即唤醒，否则新下载视频的修复
@@ -557,6 +622,13 @@ def _auto_remux_loop() -> None:
             retry_pending_backups()
         except Exception:
             pass
+        # 清理孤儿待修复标记（并发冲突被放弃后残留）——不清则缩略图永久跳过
+        try:
+            _prune_orphan_pending()
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
         if not bool(get_setting("html5_auto_remux")):
             continue
         try:
@@ -571,8 +643,11 @@ def _auto_remux_loop() -> None:
             traceback.print_exc()
 
 
-def _repair_one(library_id: str, video_id: str) -> None:
-    """修复单个入队视频：先确认仍需修复（文件可能已被处理），再串行执行并等待完成。"""
+def _repair_one(library_id: str, video_id: str) -> str:
+    """修复单个入队视频：先确认仍需修复（文件可能已被处理），再串行执行并等待完成。
+
+    返回 "busy"（已有其它视频在修，已重新排队）/ "done"（已尝试或已跳过）。
+    """
     from loc_gallery.library_context import set_thread_library
     from loc_gallery.scanner import get_by_id
 
@@ -583,6 +658,9 @@ def _repair_one(library_id: str, video_id: str) -> None:
     try:
         item = get_by_id(library_id, video_id)
         if not item:
+            # 索引里没有这条：清掉待修复标记，否则该 id 的缩略图/时长被永久跳过
+            with _lock:
+                _pending_remux.discard((library_id, video_id))
             return
         path = Path(item.path).resolve()
         if not path.is_file():
@@ -595,6 +673,10 @@ def _repair_one(library_id: str, video_id: str) -> None:
         st = path.stat()
         key = (library_id, video_id, st.st_mtime, st.st_size)
         if key in _remux_failed_keys:
+            # 已进失败黑名单（文件未变化前不再重试）：清掉待修复标记，让缩略图/时长继续，
+            # 否则任务条因一个修不好的文件永久停在 busy
+            with _lock:
+                _pending_remux.discard((library_id, video_id))
             return
         # 文件可能仍在写入/刚粘贴（mtime 在 20s 窗口）：先等稳定再修复。
         # force_probe 对写入中的文件会误判成 standard → 跳过修复（用户反馈
@@ -624,7 +706,21 @@ def _repair_one(library_id: str, video_id: str) -> None:
                 _pending_remux.discard((library_id, video_id))
             return
         result = start_remux(library_id, video_id)
-        if result.get("busy") or result.get("error"):
+        if result.get("busy"):
+            # 已有其它视频在修复：重新排队等下一轮，不能直接放弃（否则该视频永远
+            # 留在 _pending_remux，缩略图被永久跳过 → 任务条卡在 99.x%）
+            enqueue_remux(library_id, video_id)
+            _wait_running_job_done()
+            return "busy"
+        if result.get("error"):
+            # 真失败（视频不存在/不可重封装等）：清掉待修复标记，让缩略图/时长能继续，
+            # 任务条不会因为一个坏文件永久 busy
+            print(
+                f"[pipe] repair_give_up lib={library_id} vid={video_id} err={result.get('error')}",
+                flush=True,
+            )
+            with _lock:
+                _pending_remux.discard((library_id, video_id))
             return
         # 等待该任务完成（start_remux 内部已限单并行；修复期间缩略图/时长对该视频跳过）
         _auto_remux_stop.wait(_AUTO_REMUX_PAUSE_SEC)
@@ -632,6 +728,7 @@ def _repair_one(library_id: str, video_id: str) -> None:
         import traceback
 
         traceback.print_exc()
+    return "done"
 
 
 def _scan_library_for_remux(library_id: str, get_all, set_thread_library) -> None:
@@ -675,8 +772,11 @@ def _scan_library_for_remux(library_id: str, get_all, set_thread_library) -> Non
                 _auto_remux_stop.wait(_AUTO_REMUX_PAUSE_SEC)
                 return
             if result.get("error"):
-                # 修复失败（含 can_remux 校验失败）：记录黑名单，文件未变化前不再重试
+                # 修复失败（含 can_remux 校验失败）：记录黑名单，文件未变化前不再重试；
+                # 同时清掉待修复标记，否则该视频缩略图/时长被永久跳过
                 _remux_failed_keys.add(key)
+                with _lock:
+                    _pending_remux.discard((library_id, item.id))
         except Exception:
             import traceback
 

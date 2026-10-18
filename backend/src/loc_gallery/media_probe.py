@@ -11,7 +11,7 @@ from pathlib import Path
 
 from loc_gallery.thumb_manager import ffprobe_path, _get_duration_mpegts
 from loc_gallery.process_util import hidden_subprocess_kwargs
-from loc_gallery.config import playback_plans_file
+from loc_gallery.config import VIDEO_EXTENSIONS, playback_plans_file
 from loc_gallery.file_stability import is_ready_for_processing
 from loc_gallery.library_context import current_library_id, set_thread_library
 from loc_gallery.settings_store import get_setting
@@ -257,24 +257,9 @@ detect_disguised_h264 = detect_disguised_mpegts
 
 def sniff_container_kind(path: Path) -> str:
     """根据文件头判断真实容器类型。"""
-    try:
-        with path.open("rb") as f:
-            head = f.read(16)
-    except OSError:
-        return "unknown"
-    if head.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image"
-    if head.startswith(b"\xff\xd8\xff"):
-        return "image"
-    if head.startswith((b"GIF87a", b"GIF89a")):
-        return "image"
-    if len(head) >= 8 and head[4:8] == b"ftyp":
-        return "mp4"
-    if head.startswith(b"\x1a\x45\xdf\xa3"):
-        return "mkv"
-    if head.startswith(b"RIFF") and head[8:12] == b"AVI ":
-        return "avi"
-    return "unknown"
+    from loc_gallery.container_sniff import sniff_container_kind as _sniff
+
+    return _sniff(path)
 
 def _plan_needs_rebuild(path: Path, plan: dict) -> bool:
     """旧版错误缓存需重建。"""
@@ -665,6 +650,16 @@ def _build_playback_plan(path: Path) -> dict:
             "codec": probe_video_codec(path),
             "container": "image",
         }
+
+    if ext not in VIDEO_EXTENSIONS:
+        # 无扩展名/扩展名被截掉的文件：用嗅探结果当容器类型，走正常 MP4 分支。
+        # 不补这一步的话，无扩展名 MP4 会落到 _plan_non_native_container，
+        # 永远走实验性直连，碎片化文件也不会被识别为需要重封装。
+        from loc_gallery.container_sniff import container_extension
+
+        sniffed_ext = container_extension(sniff)
+        if sniffed_ext:
+            ext = sniffed_ext
 
     if ext not in _BROWSER_NATIVE_EXTENSIONS:
         if ext in _WEB_DIRECT_EXTENSIONS:

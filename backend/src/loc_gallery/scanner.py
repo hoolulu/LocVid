@@ -139,7 +139,11 @@ def _video_item_from_path(
         if not video_path.is_file():
             return None
         if video_path.suffix.lower() not in VIDEO_EXTENSIONS:
-            return None
+            # 无扩展名的完整视频（下载工具截断文件名）也要能入库
+            from loc_gallery.container_sniff import sniff_video_extension
+
+            if sniff_video_extension(video_path) is None:
+                return None
         from loc_gallery.file_stability import is_incomplete_filename
 
         if is_incomplete_filename(video_path.name):

@@ -2,6 +2,20 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Fixed (English)
+
+- **Import stall when several fragmented videos land at once** (P1): the remux queue pops one video at a time while remuxing is strictly single-concurrency, so every item after the first hit "another video is already being repaired" and `start_remux` reported it as an *error*. The import pipeline treated that as a permanent failure — it dropped the video without clearing its pending-repair mark, so the thumbnail and duration workers skipped it forever and the top progress bar sat at 99.x%. The same conflict was also written into the remux failure blacklist by the library-wide scanner. Concurrency conflicts are now reported as `busy` and re-queued, hard failures clear the pending mark, orphaned marks are pruned after a grace period, and clicking play during a conflict queues the video instead of returning an error.
+- **Extension-less videos were never imported** (P2): download tools truncate over-long filenames and can cut off the trailing `.mp4`; the scanner only matched known extensions, so complete 1–2 GB MP4s stayed invisible in the library. The scanner now falls back to sniffing the first 16 bytes of files whose extension is missing or unknown, and accepts MP4/MKV/AVI containers. Images and small files are still rejected, the stream endpoint reports a proper `video/*` content type for them, and playback plans treat them as real MP4s instead of falling back to experimental direct play.
+- **Duration probe crashed on non-ASCII paths** (P2): two ffprobe calls in the thumbnail subsystem did not pin an encoding, so the subprocess reader thread raised `UnicodeDecodeError` on Chinese directory names and silently killed the duration probe.
+
+### 修复（中文）
+
+- **一次入库多个碎片化视频会卡住整条流水线**（P1）：修复是严格单并发的，队列却逐个弹出，第 2 个起必然撞上「已有其他视频正在修复」，而 `start_remux` 把这个并发冲突当成了 *错误*。入库流水线据此判为永久失败——直接放弃，既不清待修复标记也不重新排队，于是该视频的缩略图和时长被永久跳过，顶部任务条停在 99.x% 不动。后台全库扫描那条路还把这个冲突写进了失败黑名单。现在并发冲突返回 `busy` 并重新排队，真失败才清标记，孤儿标记超过宽限期会被清理；用户在冲突期间点播时也会排队等待，而不是直接报错。
+- **无扩展名的视频永远不入库**（P2）：下载工具会把超长文件名截断，可能把末尾的 `.mp4` 一起砍掉；扫描层只认已知扩展名，于是完整的 1~2 GB MP4 在库里完全看不到。现在扩展名缺失或无法识别时，会读文件头前 16 字节兜底识别，认 MP4/MKV/AVI 三种容器。图片和小文件仍会被拒，流媒体接口会给这类文件正确的 `video/*` 类型，播放策略也按真实 MP4 处理，不再落到实验性直连。
+- **时长探测在中文路径上崩溃**（P2）：缩略图子系统里两处 ffprobe 调用没指定编码，中文目录名下子进程读取线程抛 `UnicodeDecodeError`，时长探测被静默干掉。
+
 ## [16.1.2] - 2026-09-08
 
 ### Fixed (English)

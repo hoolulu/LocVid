@@ -618,7 +618,12 @@ def _backfill_auto_naming(library_id: str) -> int:
         except Exception:
             continue
         if path.suffix.lower() not in VIDEO_EXTENSIONS:
-            continue
+            # 无扩展名的完整视频（下载工具截断文件名）：也要补命名+打标，
+            # 否则 auto_tag 的分析永远不跑，文件停在原始长名
+            from loc_gallery.container_sniff import sniff_video_extension
+
+            if sniff_video_extension(path) is None:
+                continue
         if is_incomplete_filename(path.name):
             continue
         try:
@@ -754,7 +759,17 @@ class _ChangeHandler(FileSystemEventHandler):
         if is_incomplete_filename(path.name):
             return
         if path.suffix.lower() not in VIDEO_EXTENSIONS:
-            return
+            # 无扩展名的视频（下载工具截断文件名）：按文件头兜底识别。
+            # 路径已不存在（删除/移走的 src）嗅探不了，但索引里可能有这条——
+            # 直接 return 会让残留记录永远删不掉（实测删除测试文件后仍留在库里），
+            # 所以这种情况放行，交给全库刷新清理。
+            if path.exists():
+                from loc_gallery.container_sniff import sniff_video_extension
+
+                if sniff_video_extension(path) is None:
+                    return
+            elif event_type not in ("deleted", "moved"):
+                return
         # 用户配置的忽略目录（watch_ignore_dirs）：整目录不监听
         from loc_gallery.scanner import _should_skip_watch_dir
         if _should_skip_watch_dir(path.parent, self.library_id):
@@ -2420,6 +2435,26 @@ async def api_thumb(video_id: str, library_id: str = Depends(resolve_library_id)
     )
 
 
+def _video_media_type(path: Path) -> str:
+    """流媒体 Content-Type。
+
+    无扩展名的文件（下载工具截断文件名把 .mp4 砍掉）guess_type 返回 None，
+    会降成 application/octet-stream——部分浏览器/播放器因此不肯硬解。
+    这里按文件头补回正确类型。
+    """
+    media_type, _ = mimetypes.guess_type(str(path))
+    if media_type and media_type.startswith("video/"):
+        return media_type
+    from loc_gallery.container_sniff import container_extension, sniff_container_kind
+
+    ext = container_extension(sniff_container_kind(path))
+    if ext:
+        guessed, _ = mimetypes.guess_type(f"x{ext}")
+        if guessed and guessed.startswith("video/"):
+            return guessed
+    return media_type or "application/octet-stream"
+
+
 @app.head("/api/stream/{video_id}")
 async def api_stream_head(
     video_id: str,
@@ -2433,9 +2468,7 @@ async def api_stream_head(
     if not path.is_file():
         raise HTTPException(404, "文件不存在")
     size = path.stat().st_size
-    media_type, _ = mimetypes.guess_type(str(path))
-    if not media_type or not media_type.startswith("video/"):
-        media_type = "application/octet-stream"
+    media_type = _video_media_type(path)
     return Response(
         status_code=200,
         headers={
@@ -2457,13 +2490,10 @@ async def api_stream(
     path = Path(item.path)
     if not path.is_file():
         raise HTTPException(404, "文件不存在")
-    media_type, _ = mimetypes.guess_type(str(path))
-    if not media_type or not media_type.startswith("video/"):
-        media_type = "application/octet-stream"
     return await stream_file_with_disconnect(
         request,
         path,
-        media_type=media_type,
+        media_type=_video_media_type(path),
     )
 
 
@@ -2491,6 +2521,14 @@ async def api_play_info(video_id: str, library_id: str = Depends(resolve_library
 @app.post("/api/videos/{video_id}/remux")
 async def api_video_remux_start(video_id: str, library_id: str = Depends(resolve_library_id)):
     result = start_remux(library_id, video_id)
+    if result.get("busy"):
+        # 修复单并发：后台正在修别的视频。不能报错（前端会当修复失败），
+        # 而是把这个视频排进修复队列，等后台逐个修完；前端 waitRemuxDone 继续轮询，
+        # 真正开工后状态就变 running，修完变 done（与入库分流走同一条串行链）
+        from loc_gallery.remux_manager import enqueue_remux
+
+        enqueue_remux(library_id, video_id)
+        return {"ok": True, "queued": True, **remux_status(library_id, video_id)}
     if not result.get("ok"):
         raise HTTPException(400, result.get("error") or "无法开始修复")
     return result
