@@ -2,19 +2,41 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
-## [Unreleased]
+## [16.2.0] - 2026-10-19
+
+### Added (English)
+
+- **Random list favors unwatched videos**: random sort is now a weighted shuffle (Efraimidis-Spirakis) — unseen videos first, then the longer since last play and the lower the play count. Weights are tuned so the first page is mostly unwatched (measured on a 1679-video library: 42/45 unseen, versus 3/45 for mtime order). The random seed is no longer persisted, so entering or reloading the page reshuffles, and the list no longer goes through the id-list cache (it depends on play history). Adds "Reshuffle" and "Restart Round" buttons.
+- **Per-round exclusion**: a reshuffle only draws from videos not yet shown this round; when fewer than one page is left the backend starts a new round automatically and reports it via `random_state.reset`. The round record is kept per library + filter scope in `data/libraries/<id>/random_round.json` (atomic write, 1.5s debounced flush) and survives restarts. Adds `POST /api/random/reset`.
+
+### Changed (English)
+
+- **Auto-naming shares one code path**: `_apply_auto_naming()` is now used by the real-time stable callback, the startup backfill and the rescan backfill alike (id-based libraries only). Duplicate target names get a ` (1)` / ` (2)` suffix instead of being silently skipped — the old path dropped the rename when two files analyzed to the same canonical name. The original filename is analyzed once and tags are appended without overwriting manual ones.
 
 ### Fixed (English)
 
 - **Import stall when several fragmented videos land at once** (P1): the remux queue pops one video at a time while remuxing is strictly single-concurrency, so every item after the first hit "another video is already being repaired" and `start_remux` reported it as an *error*. The import pipeline treated that as a permanent failure — it dropped the video without clearing its pending-repair mark, so the thumbnail and duration workers skipped it forever and the top progress bar sat at 99.x%. The same conflict was also written into the remux failure blacklist by the library-wide scanner. Concurrency conflicts are now reported as `busy` and re-queued, hard failures clear the pending mark, orphaned marks are pruned after a grace period, and clicking play during a conflict queues the video instead of returning an error.
 - **Extension-less videos were never imported** (P2): download tools truncate over-long filenames and can cut off the trailing `.mp4`; the scanner only matched known extensions, so complete 1–2 GB MP4s stayed invisible in the library. The scanner now falls back to sniffing the first 16 bytes of files whose extension is missing or unknown, and accepts MP4/MKV/AVI containers. Images and small files are still rejected, the stream endpoint reports a proper `video/*` content type for them, and playback plans treat them as real MP4s instead of falling back to experimental direct play.
 - **Duration probe crashed on non-ASCII paths** (P2): two ffprobe calls in the thumbnail subsystem did not pin an encoding, so the subprocess reader thread raised `UnicodeDecodeError` on Chinese directory names and silently killed the duration probe.
+- **New-album placeholder showed raw template code** (P2): the album picker input used `placeholder="{{ t(...) }}"`, and Vue 3 no longer interpolates mustaches inside attributes, so the expression itself was rendered as the placeholder text. Switched to `:placeholder`.
+- **`?sort=random` from the URL bypassed seed generation**, reshuffling on every page request (duplicate and missing items while paging).
+
+### 新增（中文）
+
+- **随机列表未看优先**：随机排序改为加权随机（Efraimidis-Spirakis）——未看过的优先，看过的按距上次播放越久越靠前、播放次数越多越靠后；权重按实测调到让首屏基本是没看过的（1679 个的库里随机 42/45，按修改时间排序只有 3/45）。不再持久化随机种子，进页面/刷新都重掷；随机排序依赖播放历史，因此不再走 id 列表缓存。新增「换一批」与「重来一轮」按钮。
+- **本轮硬排除**：换一批只从本轮还没展示过的视频里抽；剩余不足一页时后端自动开新一轮，并通过 `random_state.reset` 告知前端。本轮记录按库 + 筛选范围存放在 `data/libraries/<库>/random_round.json`（原子写 + 1.5 秒防抖落盘），重启不丢。新增 `POST /api/random/reset`。
+
+### 变更（中文）
+
+- **自动命名三入口合一**：实时稳定回调、启动补偿、重扫补偿共用 `_apply_auto_naming()`（仅编号影片库生效）。目标名重名时自动加 ` (1)`/` (2)` 后缀，不再静默跳过（旧逻辑在「同目录两个文件识别出同一规范名」时会直接丢掉改名）。原始文件名只分析一次，标签追加不覆盖手动标签。
 
 ### 修复（中文）
 
 - **一次入库多个碎片化视频会卡住整条流水线**（P1）：修复是严格单并发的，队列却逐个弹出，第 2 个起必然撞上「已有其他视频正在修复」，而 `start_remux` 把这个并发冲突当成了 *错误*。入库流水线据此判为永久失败——直接放弃，既不清待修复标记也不重新排队，于是该视频的缩略图和时长被永久跳过，顶部任务条停在 99.x% 不动。后台全库扫描那条路还把这个冲突写进了失败黑名单。现在并发冲突返回 `busy` 并重新排队，真失败才清标记，孤儿标记超过宽限期会被清理；用户在冲突期间点播时也会排队等待，而不是直接报错。
 - **无扩展名的视频永远不入库**（P2）：下载工具会把超长文件名截断，可能把末尾的 `.mp4` 一起砍掉；扫描层只认已知扩展名，于是完整的 1~2 GB MP4 在库里完全看不到。现在扩展名缺失或无法识别时，会读文件头前 16 字节兜底识别，认 MP4/MKV/AVI 三种容器。图片和小文件仍会被拒，流媒体接口会给这类文件正确的 `video/*` 类型，播放策略也按真实 MP4 处理，不再落到实验性直连。
 - **时长探测在中文路径上崩溃**（P2）：缩略图子系统里两处 ffprobe 调用没指定编码，中文目录名下子进程读取线程抛 `UnicodeDecodeError`，时长探测被静默干掉。
+- **新建专辑输入框显示原始模板代码**（P2）：专辑选择对话框的输入框写成了 `placeholder="{{ t(...) }}"`，Vue 3 已移除属性内插值，模板表达式被当作普通字符串显示。改为 `:placeholder`。
+- **URL 上的 `?sort=random` 绕过随机种子生成**，导致分页每页各洗一次牌（翻页重复/漏项）。
 
 ## [16.1.2] - 2026-09-08
 
