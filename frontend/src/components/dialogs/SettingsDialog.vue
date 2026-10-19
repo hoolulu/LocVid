@@ -448,6 +448,29 @@ watch(tab, (t) => {
                     </select>
                   </label>
                   <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.nativePlayback') }}</span>
+                    <select v-model="form.html5_native_playback" class="settings-input">
+                      <option :value="true">{{ t('settings.nativePlaybackOn') }}</option>
+                      <option :value="false">{{ t('settings.off') }}</option>
+                    </select>
+                  </label>
+                  <div class="settings-field settings-field--full">
+                    <p class="settings-field-hint">{{ t('settings.nativePlaybackHint') }}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-block">
+                <h3 class="settings-block-title">{{ t('settings.localPlayer') }}</h3>
+                <div class="settings-grid">
+                  <label class="settings-field">
+                    <span class="settings-field-label">{{ t('settings.playerMode') }}</span>
+                    <select v-model="form.player_mode" class="settings-input">
+                      <option value="web">{{ t('settings.playerModeWeb') }}</option>
+                      <option value="local">{{ t('settings.playerModeLocal') }}</option>
+                    </select>
+                  </label>
+                  <label class="settings-field">
                     <span class="settings-field-label">{{ t('settings.externalPlayerPath') }}</span>
                     <input
                       v-model="form.external_player_path"
@@ -459,6 +482,7 @@ watch(tab, (t) => {
                     <p class="settings-field-hint">
                       {{ t('settings.externalPlayerHint') }}
                     </p>
+                    <p class="settings-field-hint">{{ t('settings.playerModeHint') }}</p>
                   </div>
                 </div>
               </section>

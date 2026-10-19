@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import type { SortMode, Video } from '@/types'
 import type { PlaylistContext } from '@/utils/playlist'
 import type { createMoviPlayer } from '@/composables/useMoviPlayer'
+import type { NativeVideoPlayer } from '@/composables/useNativeVideo'
 
 export const usePlayerStore = defineStore('player', () => {
   const open = ref(false)
@@ -23,6 +24,8 @@ export const usePlayerStore = defineStore('player', () => {
   const canvasEl = ref<HTMLCanvasElement | null>(null)
   const subtitleEl = ref<HTMLDivElement | null>(null)
   const moviPlayer = ref<ReturnType<typeof createMoviPlayer> | null>(null)
+  // 原生 <video> 通道实例（标准 MP4/H.264 走这条，比 movi 轻）
+  const nativePlayer = ref<NativeVideoPlayer | null>(null)
   // 宿主 div：命令式创建的 <movi-player> web 组件节点挂在这里
   const moviHostEl = ref<HTMLElement | null>(null)
   // 播放进度/状态（供自定义控制栏绑定）
@@ -110,6 +113,7 @@ export const usePlayerStore = defineStore('player', () => {
     canvasEl,
     subtitleEl,
     moviPlayer,
+    nativePlayer,
     moviHostEl,
     currentTime,
     duration,

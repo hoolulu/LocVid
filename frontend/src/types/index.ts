@@ -102,6 +102,8 @@ export interface PlayInfo {
   reason?: string
   transcode?: boolean
   experimental_direct?: boolean
+  /** 浏览器原生 <video> 能否直接播（标准 MP4 + H.264 等，走系统硬解） */
+  native?: boolean
   cached?: boolean
   path?: string
   filename?: string
@@ -155,6 +157,8 @@ export interface Settings {
   html5_hover_preview_segment_sec: number
   html5_hover_tip_pin: boolean
   html5_seek_preview: boolean
+  html5_native_playback: boolean
+  player_mode: 'web' | 'local'
   html5_auto_remux: boolean
   ui_theme: 'dark' | 'light'
   ui_preset?: 'cinema' | 'classic'

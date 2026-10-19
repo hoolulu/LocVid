@@ -39,6 +39,8 @@ from loc_gallery.config import (
     THUMB_JITTER_MAX,
     detect_external_player_path,
     library_settings_file,
+    HTML5_NATIVE_PLAYBACK,
+    PLAYER_MODE,
 )
 
 _lock = threading.Lock()
@@ -74,6 +76,8 @@ _DEFAULTS = {
     "html5_hover_preview_segment_sec": HTML5_HOVER_PREVIEW_SEGMENT_SEC,
     "html5_hover_tip_pin": HTML5_HOVER_TIP_PIN,
     "html5_seek_preview": HTML5_SEEK_PREVIEW,
+    "html5_native_playback": HTML5_NATIVE_PLAYBACK,
+    "player_mode": PLAYER_MODE,
     "html5_auto_remux": HTML5_AUTO_REMUX,
     "ui_theme": "dark",
 }
@@ -106,6 +110,8 @@ _LIBRARY_OVERRIDE_KEYS = {
     "html5_hover_preview_segment_sec",
     "html5_hover_tip_pin",
     "html5_seek_preview",
+    "html5_native_playback",
+    "player_mode",
     "html5_auto_remux",
 }
 
@@ -128,7 +134,7 @@ def _load_global() -> dict:
             if not isinstance(data, dict):
                 data = {}
             merged = deepcopy(_DEFAULTS)
-            # 只保留已知键，自动清除旧版本遗留（如 player_mode/hls_* 等已废弃项）
+            # 只保留已知键，自动清除旧版本遗留（如 hls_* 等已废弃项）
             merged.update({k: v for k, v in data.items() if k in _DEFAULTS})
             merged["external_player_path"] = _resolve_external_player_setting(
                 merged.get("external_player_path") or merged.get("potplayer_path") or ""

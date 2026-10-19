@@ -1063,6 +1063,29 @@ body.manage-mode .card-album-badge {
 .path-tip-close:hover {
   background: rgba(0, 0, 0, 0.8);
 }
+/* 本地播放按钮：浮层左上角（与右上角关闭按钮同一视觉层级） */
+.path-tip-local {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s ease;
+}
+.path-tip-local:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
 .path-tip--measuring {
   visibility: hidden;
 }

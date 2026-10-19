@@ -2,6 +2,26 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [Unreleased]
+
+### Added (English)
+
+- **Native `<video>` playback path**: standard MP4/H.264 files now play through the browser's own hardware decoder instead of movi-player's WASM demuxer + canvas renderer, which is dramatically cheaper (1080p60 especially) and seeks smoothly. Videos the browser cannot decode (MKV/HEVC/AV1, disguised MPEG-TS) keep using the built-in player. Falls back to movi automatically if the native element errors. Toggle in Settings → Playback. Uses the browser's own control bar.
+- **Local player integration (PotPlayer/VLC/…)** (new): a "Play local" button in the video hover overlay and on the player page opens the current video in an external player, passing the right-hand playlist as an `.m3u` (current video first) plus the remembered playback position via `/seek`. Settings gain a default playback mode (in-page player / local player) next to the existing external player path field. Long filenames and thousand-item playlists are handled through the playlist file rather than the command line.
+
+### Fixed (English)
+
+- **Chromium `.crswap` temp files were imported as videos** (P2): File System Access API writes a `.crswap` file whose contents mirror the target, so the container sniffing added in 16.1.3 could treat it as a real video. They are now excluded as in-progress downloads.
+
+### 新增（中文）
+
+- **原生 `<video>` 播放通道**：标准 MP4/H.264 改为交给浏览器自己硬解，不再走 movi-player 的 WASM 解封装 + canvas 渲染，1080p60 下开销低一个量级，拖动也顺。浏览器解不了的（MKV/HEVC/AV1、伪装 MPEG-TS）继续用内置播放器；原生通道出错会自动回退。设置页可开关，控件用浏览器自带那套。
+- **本地播放器接入（PotPlayer/VLC 等）**：视频悬停浮层和播放页各加一个「本地播放」按钮，把当前视频连同右侧播放列表写成 `.m3u`（当前视频排第一）交给外部播放器，并带上记忆的播放位置（`/seek`）。设置页新增默认播放方式（网页播放 / 本地播放器），与原有的外部播放器路径放在一起。超长文件名和上千条的列表都走清单文件，不拼命令行。
+
+### 修复（中文）
+
+- **Chromium 的 `.crswap` 临时文件被当成视频入库**（P2）：文件系统写入接口会生成内容与目标文件一致的 `.crswap` 临时文件，16.1.3 加的容器嗅探会把它认成真视频。现在按"下载中"排除。
+
 ## [16.2.0] - 2026-10-19
 
 ### Added (English)

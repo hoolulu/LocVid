@@ -401,6 +401,21 @@ export default {
   'settings.externalPlayerPlaceholder': '自动检测 PotPlayer',
   'settings.externalPlayerHint':
     '浏览器无法硬解的视频（如 mpeg2/VC-1/WMV）会提示用外部播放器打开；可填 VLC、MPC-HC 等任意播放器 exe 路径。',
+  'settings.nativePlayback': '原生播放通道',
+  'settings.nativePlaybackOn': '开（标准 MP4/H.264 交给浏览器硬解，更流畅）',
+  'settings.nativePlaybackHint':
+    '开启后浏览器原生能解的 MP4/H.264 直接硬解播放，占用更低、拖动更顺；MKV/HEVC/AV1 等仍走内置播放器。原生通道用浏览器自带控件。',
+  'settings.localPlayer': '本地播放器',
+  'settings.playerMode': '默认播放方式',
+  'settings.playerModeWeb': '网页播放（默认）',
+  'settings.playerModeLocal': '本地播放器',
+  'settings.playerModeHint':
+    '选「本地播放器」后，点击视频直接用外部播放器打开；网页里的「本地播放」按钮任何模式都能用。',
+  'player.playLocal': '本地播放',
+  'player.playLocalLaunched': '已用本地播放器打开',
+  'player.playLocalFailed': '打开本地播放器失败：{msg}',
+  'player.playLocalTitle': '用本地播放器打开（带右侧播放列表）',
+  'tip.playLocal': '本地播放',
   'settings.hotkeys': '快捷键与操作',
   'settings.prevKey': '上一集键',
   'settings.nextKey': '下一集键',

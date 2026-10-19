@@ -78,6 +78,41 @@ def _launch_external_player(player: Path, video_path: str) -> None:
         )
     except OSError as exc:
         raise HTTPException(500, f"无法启动外部播放器: {exc}") from exc
+
+
+def _write_external_playlist(paths: list[str]) -> Path:
+    """写一份 .m3u 播放列表交给外部播放器（上千条的列表没法塞进命令行）。
+
+    PotPlayer / VLC 都认 .m3u；每行一个绝对路径，UTF-8（带 BOM 兼容老版本）。
+    返回写好的文件路径。
+    """
+    from loc_gallery.config import EXTERNAL_PLAYLIST_DIR
+
+    EXTERNAL_PLAYLIST_DIR.mkdir(parents=True, exist_ok=True)
+    _prune_external_playlists()
+    target = EXTERNAL_PLAYLIST_DIR / f"playlist-{uuid.uuid4().hex[:12]}.m3u"
+    body = "#EXTM3U\n" + "".join(f"{p}\n" for p in paths)
+    target.write_text(body, encoding="utf-8-sig")
+    return target
+
+
+def _prune_external_playlists(max_age_sec: int = 86400) -> int:
+    """清理上次启动留下的旧播放列表（超过一天的直接删）。"""
+    from loc_gallery.config import EXTERNAL_PLAYLIST_DIR
+
+    if not EXTERNAL_PLAYLIST_DIR.is_dir():
+        return 0
+    removed = 0
+    cutoff = time.time() - max_age_sec
+    for f in EXTERNAL_PLAYLIST_DIR.glob("*.m3u"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
 from loc_gallery.file_stability import is_incomplete_filename, notify_file_activity, set_stable_callback
 from loc_gallery.favorite_store import (
     batch_favorites,
@@ -162,6 +197,7 @@ from loc_gallery.media_probe import (
     get_format_badges,
     get_playback_plan,
     get_previewable_for_item,
+    previewable_from_plan,
 )
 from loc_gallery.remux_manager import (
     begin_remux_batch,
@@ -351,6 +387,8 @@ class SettingsUpdate(BaseModel):
     html5_hover_preview_segment_sec: int | None = None
     html5_hover_tip_pin: bool | None = None
     html5_seek_preview: bool | None = None
+    html5_native_playback: bool | None = None
+    player_mode: str | None = None  # web | local
     html5_auto_remux: bool | None = None
     ui_theme: str | None = None  # dark | light
     scope: str | None = None  # global | library
@@ -2514,6 +2552,10 @@ async def api_play_info(video_id: str, library_id: str = Depends(resolve_library
         "remux_reason": remux_reason,
         "playPosition": hist.get("position_sec"),
         "playDuration": hist.get("duration_sec"),
+        # 浏览器原生 <video> 能不能直接播：标准 MP4 + H.264 这类走原生通道
+        # （系统硬解 + GPU 合层），比 movi-player 的 WASM 解封装 + canvas 渲染轻得多。
+        # 判定与悬停预览共用一套规则（experimental_direct / 伪装 TS 都排除）。
+        "native": previewable_from_plan(plan),
         **plan,
     }
 
@@ -2551,17 +2593,77 @@ async def api_video_remux_status(video_id: str, library_id: str = Depends(resolv
     return remux_status(library_id, video_id)
 
 
+class PlayExternalRequest(BaseModel):
+    """可选播放列表：ids 按播放页右侧列表的顺序传，第一项优先播当前视频。"""
+
+    ids: list[str] = []
+    start_sec: float | None = None
+    new_instance: bool = True
+
+
+_EXTERNAL_PLAYLIST_MAX = 2000  # 单个 m3u 最多带多少条（防异常巨大的列表）
+
+
 @app.post("/api/play-external/{video_id}")
-async def api_play_external(video_id: str, library_id: str = Depends(resolve_library_id)):
-    """始终使用外部播放器打开（HTML5 模式下也可从播放器面板调用）。"""
+async def api_play_external(
+    video_id: str,
+    body: PlayExternalRequest | None = None,
+    library_id: str = Depends(resolve_library_id),
+):
+    """用外部播放器（默认 PotPlayer）打开，可带整份播放列表与续播位置。
+
+    - 不传 body / ids 为空：只播当前视频（旧行为，保持兼容）
+    - 传了 ids：写一份 .m3u（当前视频排第一，其余按传入顺序），
+      播放器按列表逐个播；超过 _EXTERNAL_PLAYLIST_MAX 的列表只带前 N 条
+    - 文件名很长/带空格都没问题：清单走文件，不拼命令行
+    """
     item = get_by_id(library_id, video_id)
     if not item:
         raise HTTPException(404, "视频不存在")
     settings = load_settings(library_id)
     player = _resolve_external_player(settings)
-    _launch_external_player(player, item.path)
+
+    args: list[str] = []
+    playlist_file: Path | None = None
+    ids = [i for i in (body.ids if body else []) if i]
+    if ids:
+        # 当前视频排第一：PotPlayer 打开列表后从第一项开始播
+        ordered = [video_id] + [i for i in dict.fromkeys(ids) if i != video_id]
+        paths: list[str] = []
+        for vid in ordered[:_EXTERNAL_PLAYLIST_MAX]:
+            v = get_by_id(library_id, vid)
+            if v and Path(v.path).is_file():
+                paths.append(v.path)
+        if len(paths) > 1:
+            playlist_file = _write_external_playlist(paths)
+            args.append(str(playlist_file))
+        else:
+            args.append(item.path)
+    else:
+        args.append(item.path)
+
+    if body and body.new_instance:
+        args.append("/new")
+    if body and body.start_sec and body.start_sec > 5:
+        sec = int(body.start_sec)
+        args.append(f"/seek={sec // 3600:02d}:{(sec % 3600) // 60:02d}:{sec % 60:02d}.000")
+
+    try:
+        subprocess.Popen(
+            [str(player), *args],
+            creationflags=subprocess.DETACHED_PROCESS,
+            close_fds=False,
+        )
+    except OSError as exc:
+        raise HTTPException(500, f"无法启动外部播放器: {exc}") from exc
+
     record_play(library_id, video_id)
-    return {"ok": True, "path": item.path}
+    return {
+        "ok": True,
+        "path": item.path,
+        "playlist": str(playlist_file) if playlist_file else None,
+        "player": str(player),
+    }
 
 
 @app.post("/api/open-folder/{video_id}")

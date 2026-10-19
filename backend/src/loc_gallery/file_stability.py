@@ -25,6 +25,9 @@ _INCOMPLETE_MARKERS = (
     ".temp",
     ".downloading",
     ".!ut",
+    # Chromium File System Access API 的写入临时文件：内容就是目标文件的镜像
+    # （容器嗅探能把里面的 MP4 头认成视频，不排除会误入库、还会被重复嗅探）
+    ".crswap",
 )
 
 _lock = threading.Lock()

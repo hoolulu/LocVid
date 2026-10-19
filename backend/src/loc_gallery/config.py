@@ -41,6 +41,11 @@ HTML5_HOVER_PREVIEW_SEGMENT_SEC = 5
 HTML5_HOVER_TIP_PIN = False
 # 进度条悬停显示时间点截图（movi-player 原生 thumb：WASM 解码目标帧，零预生成/零磁盘）
 HTML5_SEEK_PREVIEW = True
+# 浏览器原生 <video> 快速通道：标准 MP4 + H.264 走原生（系统硬解 + GPU 合层），
+# 比 movi-player 的 WASM 解封装 + canvas 渲染轻得多；解不了的文件自动回退 movi。
+HTML5_NATIVE_PLAYBACK = True
+# 默认播放方式：'web'=网页播放（默认） / 'local'=本地播放器（如 PotPlayer）
+PLAYER_MODE = "web"
 # 后台空闲时自动批量重封装 remuxable 文件（多段 mdat/碎片化 MP4 一次修复永久直连）
 HTML5_AUTO_REMUX = True
 
@@ -112,6 +117,9 @@ THUMB_INDEX_FILE = THUMB_DIR / "index.json"
 CATEGORY_META_FILE = DATA_DIR / "category_meta.json"
 FAVORITES_FILE = DATA_DIR / "favorites.json"
 HISTORY_FILE = DATA_DIR / "play_history.json"
+# 外部播放器用的临时播放列表（.m3u）。放 data 下而不是系统临时目录，
+# 方便统一清理，且不依赖 %TEMP% 的权限/清理策略
+EXTERNAL_PLAYLIST_DIR = DATA_DIR / "tmp" / "playlists"
 
 
 def library_data_dir(library_id: str) -> Path:

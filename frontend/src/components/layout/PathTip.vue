@@ -5,12 +5,34 @@ import { t } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { usePathTip } from '@/composables/usePathTip'
 import { useHoverPreview } from '@/composables/useHoverPreview'
+import { useGalleryStore } from '@/stores/gallery'
+import { useUiStore } from '@/stores/ui'
+import { playExternal } from '@/api/play'
 import { formatDuration, formatSize, formatBadgeLabel } from '@/utils/format'
 
 const settings = useSettingsStore()
+const gallery = useGalleryStore()
+const ui = useUiStore()
 const { visible, item, tipLeft, tipTop, measuring, pinned, afterLayout, closeTip } = usePathTip()
 const { placeholderLoading, stopPreviewNow, previewRatio, previewFailed } = useHoverPreview()
 const tipRef = ref<HTMLElement | null>(null)
+
+/** 用本地播放器打开当前悬停的视频（带当前列表顺序） */
+async function onPlayLocal() {
+  const v = item.value
+  if (!v) return
+  try {
+    await playExternal(v.id, {
+      ids: gallery.videos.map((x) => x.id),
+      startSec: v.playPosition ?? undefined,
+      newInstance: true,
+    })
+    ui.showToast(t('player.playLocalLaunched'))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    ui.showToast(t('player.playLocalFailed', { msg }), 'error')
+  }
+}
 
 // 悬浮预览启用：预览区渲染「加载占位」而非缩略图，视频就绪后在其上淡入播放
 const hoverPreviewEnabled = computed(
@@ -185,6 +207,13 @@ watch(previewRatio, () => {
       @click="onCloseTip"
     >
       ✕
+    </button>
+    <button
+      class="path-tip-local"
+      :title="t('player.playLocalTitle')"
+      @click.stop="onPlayLocal"
+    >
+      🖥 {{ t('tip.playLocal') }}
     </button>
     <div class="path-tip-preview">
       <!-- 悬浮预览启用：预览区仅在视频比例就绪后渲染（直接以正确比例出现，

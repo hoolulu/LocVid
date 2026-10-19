@@ -28,6 +28,7 @@ import {
 
 import { formatDuration, getSavedPosition } from '@/utils/format'
 import { createMoviPlayer } from './useMoviPlayer'
+import { createNativeVideo } from './useNativeVideo'
 import { usePlaylistLoader } from './usePlaylistLoader'
 import { usePlayerUrlSync } from './usePlayerUrlSync'
 import { resetPlayerRestore } from './usePlayerRestore'
@@ -61,7 +62,17 @@ export function usePlayback() {
 
 
 
+  function destroyNative() {
+    try {
+      player.nativePlayer?.destroy()
+    } catch {
+      /* ignore */
+    }
+    player.nativePlayer = null
+  }
+
   function destroyMovi() {
+    destroyNative()
     try {
       player.moviPlayer?.destroy()
     } catch {
@@ -92,6 +103,7 @@ export function usePlayback() {
 
     }
 
+    // nativePlayer 自己的 destroy 已在 destroyMovi 里调用
   }
 
   function unbindSaver() {
@@ -178,6 +190,89 @@ export function usePlayback() {
   }
 
 
+
+  /**
+   * 原生 <video> 通道：标准 MP4 + H.264 交给浏览器硬解，省掉 WASM 解封装的 CPU 开销。
+   * 出错（编码实际不被支持、容器不规范等）由调用方回退到 movi，不在这里吞错。
+   */
+  async function startNative(
+    id: string,
+    item: Video,
+    session: number,
+    opts: { probeOnly?: boolean } = {},
+  ) {
+    destroyMovi()
+
+    const host = player.moviHostEl
+    if (!host) return
+
+    const resume = settings.settings?.html5_resume_playback !== false
+    const resumeAt = getSavedPosition(item.playPosition, item.playDuration, resume) || 0
+    player.showOverlay(t('player.loadingVideo'), t('player.analyzing'), { indeterminate: true })
+
+    let failed = false
+    const np = createNativeVideo(
+      host,
+      streamUrl(id, library.activeLibraryId),
+      {
+        onLoaded: (dur) => {
+          if (player.isStale(session)) return
+          player.currentTime = resumeAt || 0
+          player.duration = dur
+          player.volume = 1
+          player.muted = false
+          player.hideOverlay()
+          if (resumeAt > 0) {
+            const prefix = t('player.resumePrefix')
+            player.statusText = t('player.resumeFrom', { pos: formatDuration(resumeAt) })
+            setTimeout(() => {
+              if (player.statusText.startsWith(prefix)) player.statusText = ''
+            }, 3000)
+          }
+          void recordPlay(id)
+          updateMediaSession(item)
+          prefetchIfNeeded()
+        },
+        onTime: (t2) => {
+          player.currentTime = t2
+          if (!resume) return
+          if (saveTimer) clearTimeout(saveTimer)
+          saveTimer = setTimeout(() => {
+            void savePosition(id, t2, np.getDuration() || undefined)
+          }, 2500)
+        },
+        onEnded: () => {
+          void savePosition(id, np.getDuration(), np.getDuration() || undefined)
+          void (async () => {
+            await stopSlice()
+            if (player.isStale(session)) return
+            if (settings.settings?.html5_playlist_autoplay !== false && player.open) {
+              await playAdjacent(1)
+            }
+          })()
+        },
+        onPlayStateChange: (playing) => {
+          player.isPaused = !playing
+        },
+        onError: (err) => {
+          // 原生解不了（编码/容器实际不支持）：静默回退 movi，不打断观看
+          if (failed || player.isStale(session) || opts.probeOnly) return
+          failed = true
+          console.info('[LocVid] 原生播放失败，回退 movi-player：', err)
+          destroyNative()
+          void startMovi(id, item, session, {})
+        },
+      },
+      { startAt: resumeAt },
+    )
+
+    if (player.isStale(session)) {
+      np.destroy()
+      return
+    }
+    player.nativePlayer = np
+    np.play()
+  }
 
   async function startMovi(
     id: string,
@@ -441,6 +536,11 @@ export function usePlayback() {
 
 
 
+      if (info.native && settings.settings?.html5_native_playback !== false) {
+        await startNative(item.id, item, session)
+        return
+      }
+
       if (info.mode === 'hls') {
         // 多段 mdat / 碎片化 MP4（media_probe 标记 remuxable）不能被 movi-player
         // 的 mp4box 直接解析（会永久卡 loading），先重封装修复再播；普通大文件
@@ -533,7 +633,7 @@ export function usePlayback() {
 
   function wheelSeek(deltaY: number) {
 
-    const mp = player.moviPlayer
+    const mp = player.nativePlayer ?? player.moviPlayer
 
     if (!mp || !player.open) return
 
@@ -551,7 +651,7 @@ export function usePlayback() {
 
   async function onPageHide() {
 
-    const mp = player.moviPlayer
+    const mp = player.nativePlayer ?? player.moviPlayer
 
     const id = player.playingId
 

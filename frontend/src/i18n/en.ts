@@ -403,6 +403,21 @@ export default {
   'settings.externalPlayerPlaceholder': 'Auto-detect PotPlayer',
   'settings.externalPlayerHint':
     'Videos the browser cannot decode (e.g. mpeg2/VC-1/WMV) will offer external player; any player exe works (VLC, MPC-HC…).',
+  'settings.nativePlayback': 'Native playback path',
+  'settings.nativePlaybackOn': 'On (browser hardware decode for standard MP4/H.264, smoother)',
+  'settings.nativePlaybackHint':
+    'Standard MP4/H.264 play through the browser native hardware decoder — lower CPU, smoother seeking. MKV/HEVC/AV1 keep using the built-in player. The native path uses the browser control bar.',
+  'settings.localPlayer': 'Local player',
+  'settings.playerMode': 'Default playback',
+  'settings.playerModeWeb': 'In-page player (default)',
+  'settings.playerModeLocal': 'Local player',
+  'settings.playerModeHint':
+    'With "Local player", clicking a video opens it in the external player. The "Play local" button works in either mode.',
+  'player.playLocal': 'Play local',
+  'player.playLocalLaunched': 'Opened in the local player',
+  'player.playLocalFailed': 'Failed to open the local player: {msg}',
+  'player.playLocalTitle': 'Open in local player (with the playlist)',
+  'tip.playLocal': 'Play local',
   'settings.hotkeys': 'Hotkeys & Actions',
   'settings.prevKey': 'Previous episode key',
   'settings.nextKey': 'Next episode key',

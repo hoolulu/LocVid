@@ -11,6 +11,7 @@ import { useUiStore } from '@/stores/ui'
 import { formatDuration } from '@/utils/format'
 import { thumbUrl } from '@/api/client'
 import { toggleFavorite } from '@/api'
+import { playExternal } from '@/api/play'
 import { getPlaylistSortOptions } from '@/constants/sort'
 import { t } from '@/i18n'
 import type { SortMode } from '@/types'
@@ -133,6 +134,8 @@ onUnmounted(() => {
   window.removeEventListener('pagehide', onPageHide)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   observer?.disconnect()
+  player.nativePlayer?.destroy()
+  player.nativePlayer = null
   player.moviPlayer?.destroy()
   player.moviPlayer = null
   player.moviHostEl = null
@@ -152,7 +155,9 @@ function onKeydown(e: KeyboardEvent) {
       target.isContentEditable)
   if (isEditable) return
 
-  const moviEl = player.moviPlayer?.getElement() as unknown as
+  // 两条播放通道：原生 <video> 或 movi-player 的 web 组件，快捷键对两者都生效
+  const moviEl = (player.nativePlayer?.getElement() ??
+    player.moviPlayer?.getElement()) as unknown as
     | {
         playbackRate?: number
         currentTime?: number
@@ -160,6 +165,8 @@ function onKeydown(e: KeyboardEvent) {
         play?: () => void | Promise<void>
         pause?: () => void
         toggleFullscreen?: () => Promise<void> | void
+        requestFullscreen?: () => Promise<void>
+        webkitRequestFullscreen?: () => void
       }
     | null
     | undefined
@@ -208,6 +215,14 @@ function onKeydown(e: KeyboardEvent) {
     // 回车 = 全屏切换：等价于点击播放器全屏按钮，再次按回车恢复窗口。
     // movi-player 的 toggleFullscreen 为运行时公共方法（d.ts 标 private，断言调用）。
     e.preventDefault()
+    if (player.nativePlayer) {
+      // 原生通道：直接对 video 元素切全屏
+      const el = player.nativePlayer.getElement()
+      if (!el) return
+      if (document.fullscreenElement) void document.exitFullscreen()
+      else void el.requestFullscreen?.()
+      return
+    }
     const el = player.moviPlayer?.getElement() as unknown as
       | { toggleFullscreen?: () => Promise<void> | void }
       | null
@@ -303,6 +318,26 @@ function onAddToAlbum() {
 async function onPlaylistSortChange(e: Event) {
   await reloadPlaylist((e.target as HTMLSelectElement).value as SortMode)
 }
+
+/**
+ * 用本地播放器（PotPlayer 等）打开当前视频。
+ * 传当前视频 + 右侧列表顺序；续播位置用记忆的进度，超过 5 秒才传。
+ */
+async function onPlayLocal() {
+  const item = current.value
+  if (!item) return
+  try {
+    await playExternal(item.id, {
+      ids: player.playlist.map((v) => v.id),
+      startSec: item.playPosition ?? undefined,
+      newInstance: true,
+    })
+    ui.showToast(t('player.playLocalLaunched'))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    ui.showToast(t('player.playLocalFailed', { msg }), 'error')
+  }
+}
 </script>
 
 <template>
@@ -378,6 +413,14 @@ async function onPlaylistSortChange(e: Event) {
             </p>
           </div>
           <div class="player-toolbar-actions">
+            <button
+              type="button"
+              class="player-toolbar-btn"
+              :title="t('player.playLocalTitle')"
+              @click="onPlayLocal"
+            >
+              🖥 {{ t('player.playLocal') }}
+            </button>
             <button
               type="button"
               class="player-toolbar-btn"
