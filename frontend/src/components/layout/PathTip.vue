@@ -13,9 +13,20 @@ import { formatDuration, formatSize, formatBadgeLabel } from '@/utils/format'
 const settings = useSettingsStore()
 const gallery = useGalleryStore()
 const ui = useUiStore()
-const { visible, item, tipLeft, tipTop, measuring, pinned, afterLayout, closeTip } = usePathTip()
+const { visible, item, tipLeft, tipTop, measuring, pinned, afterLayout, closeTip, cancelHide } =
+  usePathTip()
 const { placeholderLoading, stopPreviewNow, previewRatio, previewFailed } = useHoverPreview()
 const tipRef = ref<HTMLElement | null>(null)
+
+/** 鼠标离开浮层：这一下才真正收起 */
+function onTipLeave(e: MouseEvent) {
+  const related = e.relatedTarget as Node | null
+  const tip = tipRef.value
+  if (related && tip && tip.contains(related)) return
+  closeTip()
+  // 浮层收起时把预览流停掉（鼠标进了浮层后卡片的 mouseleave 不再停它）
+  stopPreviewNow()
+}
 
 /** 用本地播放器打开当前悬停的视频（带当前列表顺序） */
 async function onPlayLocal() {
@@ -28,6 +39,8 @@ async function onPlayLocal() {
       newInstance: true,
     })
     ui.showToast(t('player.playLocalLaunched'))
+    closeTip()
+    stopPreviewNow()
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     ui.showToast(t('player.playLocalFailed', { msg }), 'error')
@@ -198,7 +211,8 @@ watch(previewRatio, () => {
     :class="{ 'path-tip--measuring': measuring }"
     role="tooltip"
     :style="{ left: `${tipLeft}px`, top: `${tipTop}px` }"
-    :title="item.path"
+    @mouseenter="cancelHide"
+    @mouseleave="onTipLeave"
   >
     <button
       v-if="pinned"

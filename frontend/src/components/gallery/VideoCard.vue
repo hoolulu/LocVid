@@ -122,8 +122,11 @@ function onCheckChange(e: Event) {
       @mouseleave="(e) => {
         const anchor = e.currentTarget as HTMLElement
         onAnchorLeave(e, anchor)
-        // 钉住模式：浮层保留（含预览视频继续播放），由关闭按钮统一停止
-        if (settings.settings?.html5_hover_tip_pin === false) stopPreview()
+        // 钉住模式：浮层保留（含预览视频继续播放），由关闭按钮统一停止。
+        // 鼠标是移进浮层（去点「本地播放」）：预览别停，否则浮层里画面变空白
+        const toTip =
+          e.relatedTarget instanceof Element && !!e.relatedTarget.closest('.path-tip')
+        if (settings.settings?.html5_hover_tip_pin === false && !toTip) stopPreview()
       }"
     >
       <!-- 不用 loading="lazy"：虚拟网格（VirtualVideoGrid）已只渲染视口附近的行，

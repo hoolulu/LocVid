@@ -1035,7 +1035,9 @@ body.manage-mode .card-album-badge {
   border: 1px solid var(--lg-border);
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
+  /* 浮层自己接住鼠标：鼠标移上来才算"没离开"，否则右上角关闭、右下角「本地播放」
+     这些按钮永远点不到（鼠标一离开卡片浮层就收了）。收起时机改由 mouseleave 决定 */
+  pointer-events: auto;
   line-height: 1.45;
   overflow: hidden;
 }
@@ -1063,11 +1065,11 @@ body.manage-mode .card-album-badge {
 .path-tip-close:hover {
   background: rgba(0, 0, 0, 0.8);
 }
-/* 本地播放按钮：浮层左上角（与右上角关闭按钮同一视觉层级） */
+/* 本地播放按钮：浮层右下角 */
 .path-tip-local {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  right: 8px;
+  bottom: 8px;
   z-index: 5;
   display: flex;
   align-items: center;

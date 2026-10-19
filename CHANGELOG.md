@@ -2,7 +2,7 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
-## [Unreleased]
+## [16.3.0] - 2026-10-20
 
 ### Added (English)
 
@@ -11,6 +11,10 @@
 
 ### Fixed (English)
 
+- **Codes with a numeric prefix were never recognized** (P1): `200GANA-3475`, `420HOI-245`, `546EROFV-392` and friends kept their full English titles because the code regex required the letters not to be preceded by a digit. The pattern now accepts up to three leading digits and folds them into the code, while the vendor tag still uses only the letter part. Library-wide diff over 2360 videos changed exactly five filenames (the three target files plus two `FC2 PPV …` space-separated ones) and nothing else.
+- **Trailing word letters were treated as tech markers** (P2): a title ending in a word like `Electric` had its final `c` matched as the `-C` marker, producing names like `420HOI-245 c.mp4`.
+- **`FC2 PPV <id>` with spaces was not recognized** (P2): the FC2 rule required `-`/`_` after `ppv`; it now also accepts a space.
+- **Hover overlay's "Play local" button could never be clicked** (P2): the overlay closed as soon as the pointer left the card, so by the time it reached the button in the corner the panel was gone; moving toward it could also land on another card and swap the previewed video. The overlay now stays while the pointer is on it (it hides on its own `mouseleave`), sits flush against the card so the pointer never crosses another card on the way, and the native `title` (full file path) tooltip that popped up next to the cursor is gone.
 - **Chromium `.crswap` temp files were imported as videos** (P2): File System Access API writes a `.crswap` file whose contents mirror the target, so the container sniffing added in 16.1.3 could treat it as a real video. They are now excluded as in-progress downloads.
 
 ### 新增（中文）
@@ -20,6 +24,10 @@
 
 ### 修复（中文）
 
+- **带数字前缀的番号永远识别不到**（P1）：`200GANA-3475`、`420HOI-245`、`546EROFV-392` 这类番号，字母前面是数字，而番号正则的 lookbehind 要求字母前不能是字母或数字，于是整条匹配失败，文件保留完整英文标题不自动改名。现在允许最多 3 位数字前缀并把它算进番号，厂商标签仍只取字母段。全库 2360 个文件做新旧对比，只有 5 个判定变化（三个目标文件 + 两个 `FC2 PPV …` 空格写法），其余不受影响。
+- **标题末尾单词的尾字母被当成技术标记**（P2）：以 `Electric` 这类单词结尾的标题，最后的 `c` 被匹配成 `-C`，生成 `420HOI-245 c.mp4` 这种名字。
+- **`FC2 PPV <编号>` 空格写法识别不到**（P2）：FC2 规则要求 `ppv` 后必须是 `-` 或 `_`，现在也接受空格。
+- **悬停浮层的「本地播放」按钮点不到**（P2）：浮层在鼠标离开卡片时就收起，等手移到角落的按钮上早就没了；路上还可能压到别的卡片，把浮层内容换成另一个视频。现在浮层会接住鼠标（鼠标在浮层上不收起，离开浮层才收），并紧贴卡片摆放，避免鼠标在路上跨过其它卡片；同时去掉了鼠标旁弹出的原生路径提示。
 - **Chromium 的 `.crswap` 临时文件被当成视频入库**（P2）：文件系统写入接口会生成内容与目标文件一致的 `.crswap` 临时文件，16.1.3 加的容器嗅探会把它认成真视频。现在按"下载中"排除。
 
 ## [16.2.0] - 2026-10-19

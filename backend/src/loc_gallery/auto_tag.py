@@ -33,12 +33,19 @@ SER_PATTERNS = [
     re.compile(r'(?<![a-z0-9])1pon[dt]?o?[-_]?\d{6}_\d{3}', re.I),
     re.compile(r'(?<![a-z0-9])10mu[-_]\d{6}[-_]\d{2,4}', re.I),
     re.compile(r'(?<![a-z0-9])heyzo[-_]\d{3,5}', re.I),
-    re.compile(r'(?<![a-z0-9])fc2[-_ ]?ppv[-_]\d+', re.I),
+    # FC2 的三种写法都要认：FC2-PPV-1234567 / FC2PPV-1234567 / FC2 PPV 4938872
+    re.compile(r'(?<![a-z0-9])fc2[-_ ]?ppv[-_ ]\d+', re.I),
 ]
 DATE_CODE = re.compile(r'(?<![0-9])\d{6}[-_]\d{3,4}')
-CODE = re.compile(r'(?<![a-zA-Z0-9])([A-Za-z]{2,6})[-_]\d{2,5}(?![a-zA-Z0-9])')
+# 番号：字母前缀 2~6 位 + 分隔符 + 2~5 位数字。
+# 前缀最多允许 3 位数字（200GANA-3475 / 420HOI-245 / 546EROFV-392 这类，
+# 字母前面是数字，旧的 (?<![a-zA-Z0-9]) 会把它们整条挡掉），数字前缀一并算进番号；
+# 上限卡在 3 位是刻意的——放开会开始匹配标题里的普通词组。
+CODE = re.compile(r'(?:^|[^A-Za-z0-9])(\d{0,3}[A-Za-z]{2,6}[-_]\d{2,5})(?![A-Za-z0-9])')
 TECH = re.compile(
-    r'(?:[-_ ]?(?:C|UC|MR|NC|C_GG5|FHD|HD|2160p|1080p|720p|480p|2K|4K|CARIB|PACO|1PON|10MU|HEYZO))+\s*$',
+    # (?<![A-Za-z]) 是必需的：没有它，标题末尾单词的尾字母会被当成技术标记
+    # （实测 "...Older Sister Electric" → 尾巴的 c 被当成 -C → 建议名多出 " c"）
+    r'(?<![A-Za-z])(?:[-_ ]?(?:C|UC|MR|NC|C_GG5|FHD|HD|2160p|1080p|720p|480p|2K|4K|CARIB|PACO|1PON|10MU|HEYZO))+\s*$',
     re.I,
 )
 
@@ -89,7 +96,11 @@ def _vendor_tag(name: str) -> str | None:
     m = CODE.search(name)
     if not m:
         return None
-    v = m.group(1).upper()
+    # group(1) 是完整番号（可能带数字前缀，如 200GANA-3475）；厂商标签只取字母段
+    letter = re.match(r'\d{0,3}([A-Za-z]{2,6})', m.group(1))
+    if not letter:
+        return None
+    v = letter.group(1).upper()
     if v in _IGNORE_VENDOR:
         return None
     return v
@@ -112,7 +123,8 @@ def _extract_code(name: str) -> str | None:
         return m.group(0)
     m = CODE.search(name)
     if m:
-        return re.sub(r'^[A-Za-z]{2,6}', lambda x: x.group(0).upper(), m.group(0))
+        # group(1) 含可能的数字前缀；只把字母部分转大写，数字原样保留
+        return re.sub(r'[A-Za-z]{2,6}', lambda x: x.group(0).upper(), m.group(1))
     return None
 
 

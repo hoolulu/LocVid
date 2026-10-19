@@ -13,7 +13,14 @@ const measuring = ref(false)
 const pinned = ref(false)
 
 let timer: ReturnType<typeof setTimeout> | null = null
+// 离开卡片后的"宽限期"：鼠标多半正在移向浮层，给一点点时间让它落到浮层上。
+// 直接 hide 的话，鼠标跨过卡片右边缘那一下浮层就没了（实测有几率触发）。
+let hideTimer: ReturnType<typeof setTimeout> | null = null
 let anchorEl: HTMLElement | null = null
+
+// 卡片与浮层之间不留缝（positionTip 的 pad=0）：留缝时鼠标从卡片移向浮层会先压到
+// 下层卡片，那张卡的 hover 把浮层重置掉，右下角的「本地播放」按钮就永远点不到。
+// 贴紧后鼠标一离开卡片右边缘就进到浮层里，浮层的 mouseleave 才是收起时机。
 
 function isPinMode() {
   // 默认移开鼠标自动消失（pin=false）；仅显式开启时才是钉住模式
@@ -23,7 +30,8 @@ function isPinMode() {
 function positionTip(tipW: number, tipH: number) {
   const rect = anchorRect.value
   if (!rect) return
-  const pad = 12
+  // 0：浮层紧贴卡片（留缝会让按钮点不到，见文件顶部的说明）
+  const pad = 0
   const vw = window.innerWidth
   const vh = window.innerHeight
   let left: number
@@ -74,7 +82,15 @@ function scheduleShow(video: Video, anchor: HTMLElement, playlist = false) {
   }, 220)
 }
 
+function cancelHide() {
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+}
+
 function hide() {
+  cancelHide()
   if (timer) clearTimeout(timer)
   timer = null
   anchorEl = null
@@ -92,7 +108,14 @@ function onAnchorLeave(e: MouseEvent, anchor: HTMLElement) {
     pinned.value = true
     return
   }
-  hide()
+  // 鼠标是移进浮层（去点右下角的「本地播放」）：不算离开，交给浮层的 mouseleave 收
+  if (related instanceof Element && related.closest('.path-tip')) return
+  // 其余情况给 120ms 宽限：鼠标可能正跨过卡片边缘往浮层去，落到浮层上会 cancelHide
+  if (hideTimer) clearTimeout(hideTimer)
+  hideTimer = setTimeout(() => {
+    hideTimer = null
+    hide()
+  }, 120)
 }
 
 function closeTip() {
@@ -147,6 +170,7 @@ function afterLayout(tipEl: HTMLElement | null) {
 
 export function usePathTip() {
   return {
+    cancelHide,
     visible,
     item,
     anchorRect,
