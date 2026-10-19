@@ -1721,6 +1721,35 @@ body.manage-mode .card-album-badge {
 .batch-action-bar {
   z-index: 40;
 }
+/* 进度条悬停预览：跟着鼠标贴在控件条上方 */
+.player-hover-preview {
+  position: absolute;
+  z-index: 12;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.player-hover-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.player-hover-preview-time {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
 .player-stage {
   position: relative;
   min-height: 0;

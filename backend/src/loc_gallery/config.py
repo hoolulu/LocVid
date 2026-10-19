@@ -172,6 +172,11 @@ def format_index_file(library_id: str) -> Path:
     return library_data_dir(library_id) / "cache" / "format_index.json"
 
 
+def preview_dir(library_id: str) -> Path:
+    """进度条悬停预览帧缓存（按视频 id 分目录，文件名是时间点秒数）。"""
+    return library_data_dir(library_id) / "cache" / "previews"
+
+
 def _migrate_legacy_data() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     (DATA_DIR / "logs").mkdir(parents=True, exist_ok=True)

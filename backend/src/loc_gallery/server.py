@@ -2535,6 +2535,90 @@ async def api_stream(
     )
 
 
+# 进度条悬停预览：按 2 秒粒度抽帧并落盘缓存。粒度太细会导致缓存爆炸、命中率低；
+# 2 秒在 1080p 上视觉上完全够用（拖动条本来也只有几百像素宽）
+_PREVIEW_BUCKET_SEC = 2.0
+_PREVIEW_WIDTH = 320
+_PREVIEW_CACHE_MAX_AGE = 30 * 86400  # 30 天后视为过期，再次请求时重抽
+
+
+def _preview_cache_path(library_id: str, video_id: str, bucket: int, mtime: float) -> Path:
+    from loc_gallery.config import preview_dir
+
+    # mtime 进文件名：文件被替换（重封装/重命名）后旧帧自动失效
+    return preview_dir(library_id) / video_id / f"{bucket:06d}-{int(mtime)}.jpg"
+
+
+def _extract_preview_frame(source: Path, target: Path, at_sec: float) -> bool:
+    """抽一帧写进 target（先写临时文件再原子替换，避免并发读到半截 JPEG）。"""
+    from loc_gallery.process_util import hidden_subprocess_kwargs
+    from loc_gallery.thumb_manager import ffmpeg_path
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # 临时文件必须以 .jpg 结尾：ffmpeg 靠扩展名推断输出格式，.jpg.tmp 会报
+    # "Unable to choose an output format"
+    tmp = target.with_name(f".{target.stem}.tmp.jpg")
+    cmd = [
+        ffmpeg_path(),
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        # -ss 放在 -i 前面：走关键帧快速定位，避免为了一个缩略图把全片解码一遍
+        "-ss", f"{max(0.0, at_sec):.3f}",
+        "-i", str(source),
+        "-frames:v", "1",
+        "-an", "-sn",
+        "-vf", f"scale={_PREVIEW_WIDTH}:-2",
+        "-q:v", "4",
+        str(tmp),
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=20,
+            **hidden_subprocess_kwargs(),
+        )
+        if result.returncode != 0 or not tmp.is_file() or tmp.stat().st_size <= 0:
+            tmp.unlink(missing_ok=True)
+            return False
+        tmp.replace(target)
+        return True
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        return False
+
+
+@app.get("/api/preview/{video_id}")
+async def api_preview_frame(
+    video_id: str,
+    t: float = Query(0, ge=-1e6, le=1e6),
+    library_id: str = Depends(resolve_library_id),
+):
+    """播放进度条悬停预览：返回该时间点的一帧 JPEG（2 秒粒度，磁盘缓存）。"""
+    item = get_by_id(library_id, video_id)
+    if not item:
+        raise HTTPException(404, "视频不存在")
+    source = Path(item.path)
+    if not source.is_file():
+        raise HTTPException(404, "文件不存在")
+
+    bucket = int(max(0.0, t) // _PREVIEW_BUCKET_SEC)
+    cache = _preview_cache_path(library_id, video_id, bucket, item.mtime)
+    fresh = cache.is_file() and (time.time() - cache.stat().st_mtime) < _PREVIEW_CACHE_MAX_AGE
+    if not fresh:
+        ok = await asyncio.to_thread(
+            _extract_preview_frame, source, cache, bucket * _PREVIEW_BUCKET_SEC
+        )
+        if not ok:
+            raise HTTPException(500, "无法生成预览帧")
+    return FileResponse(
+        cache,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @app.get("/api/play/info/{video_id}")
 async def api_play_info(video_id: str, library_id: str = Depends(resolve_library_id)):
     item = get_by_id(library_id, video_id)

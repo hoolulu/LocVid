@@ -5,11 +5,12 @@ import { usePlaylistLoader } from '@/composables/usePlaylistLoader'
 import { usePathTip } from '@/composables/usePathTip'
 import { useHoverPreview } from '@/composables/useHoverPreview'
 import { showVideoContextMenu } from '@/composables/useVideoContextActions'
+import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useSettingsStore } from '@/stores/settings'
 import { useUiStore } from '@/stores/ui'
 import { formatDuration } from '@/utils/format'
-import { thumbUrl } from '@/api/client'
+import { previewUrl, thumbUrl } from '@/api/client'
 import { toggleFavorite } from '@/api'
 import { playExternal } from '@/api/play'
 import { getPlaylistSortOptions } from '@/constants/sort'
@@ -17,6 +18,7 @@ import { t } from '@/i18n'
 import type { SortMode } from '@/types'
 
 const player = usePlayerStore()
+const library = useLibraryStore()
 const ui = useUiStore()
 const settings = useSettingsStore()
 const { playVideo, cancelPlayback, playAdjacent, reloadPlaylist, wheelSeek } =
@@ -39,6 +41,7 @@ function onStageMouseEnter() {
 }
 function onStageMouseLeave() {
   backVisible.value = false
+  hideHoverPreview()
 }
 
 const current = computed(() => player.playingItem)
@@ -134,6 +137,7 @@ onUnmounted(() => {
   window.removeEventListener('pagehide', onPageHide)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   observer?.disconnect()
+  hideHoverPreview()
   player.nativePlayer?.destroy()
   player.nativePlayer = null
   player.moviPlayer?.destroy()
@@ -294,6 +298,99 @@ function onWheel(e: WheelEvent) {
   wheelSeek(e.deltaY)
 }
 
+// ── 进度条悬停预览（仅原生 <video> 通道；movi 自带 thumb 缩略图）──
+// 浏览器原生控件不暴露"鼠标落在进度条上的哪一点"，所以捕获层不叠元素，
+// 直接监听播放区 mousemove，按"视频底部这条带子"换算时间（实测 Chrome 的进度条
+// 贴在控件条最底部，约 10~15px 高，整条控件条约 60px）。
+const PREVIEW_BAND_PX = 28 // 从视频底边往上算多少像素算"在进度条上"
+const PREVIEW_W = 168
+const PREVIEW_H = 96
+const hoverPreview = ref<{ left: number; top: number; time: number; src: string } | null>(null)
+let hoverTimer: ReturnType<typeof setTimeout> | null = null
+let hoverSeq = 0
+// 首帧立即发（不走防抖），之后按桶节流：抽一帧要 180ms 左右，
+// 鼠标扫过去时每个像素都请求没意义，同一秒内的连续移动合并成一次
+const PREVIEW_THROTTLE_MS = 110
+let lastReqAt = 0
+let lastBucket = -1
+
+function hideHoverPreview() {
+  if (hoverTimer) {
+    clearTimeout(hoverTimer)
+    hoverTimer = null
+  }
+  hoverSeq += 1
+  lastBucket = -1
+  hoverPreview.value = null
+}
+
+/** 真正去拿这一帧（带请求序号，慢响应回来时不会覆盖最新位置） */
+function requestPreview(id: string, time: number, seq: number) {
+  const url = previewUrl(id, time, library.activeLibraryId)
+  const img = new Image()
+  img.onload = () => {
+    if (seq !== hoverSeq) return
+    if (hoverPreview.value) hoverPreview.value = { ...hoverPreview.value, src: url }
+  }
+  img.src = url
+}
+
+function onStageMouseMove(e: MouseEvent) {
+  const np = player.nativePlayer
+  const stage = e.currentTarget as HTMLElement | null
+  if (!np || !stage) return
+  const video = np.getElement()
+  if (!video) return
+  const vr = video.getBoundingClientRect()
+  const duration = np.getDuration() || 0
+  if (duration <= 0) return
+  // 指针要在视频范围内、且落在底部那条进度条带子上
+  if (
+    e.clientX < vr.left ||
+    e.clientX > vr.right ||
+    e.clientY < vr.bottom - PREVIEW_BAND_PX ||
+    e.clientY > vr.bottom
+  ) {
+    hideHoverPreview()
+    return
+  }
+  const ratio = Math.min(1, Math.max(0, (e.clientX - vr.left) / vr.width))
+  const time = Math.round(ratio * duration)
+  const sr = stage.getBoundingClientRect()
+  const left = Math.min(
+    Math.max(8, e.clientX - sr.left - PREVIEW_W / 2),
+    sr.width - PREVIEW_W - 8,
+  )
+  const top = Math.max(8, vr.bottom - sr.top - PREVIEW_BAND_PX - PREVIEW_H - 8)
+  const id = player.playingId
+  if (!id) return
+  hoverPreview.value = {
+    left,
+    top,
+    time,
+    src: hoverPreview.value?.src ?? '',
+  }
+  // 桶（后端 2 秒一个桶）没变就不重复请求
+  const bucket = Math.floor(time / 2)
+  if (bucket === lastBucket) return
+  lastBucket = bucket
+  const seq = ++hoverSeq
+  const wait = Math.max(0, PREVIEW_THROTTLE_MS - (performance.now() - lastReqAt))
+  if (hoverTimer) clearTimeout(hoverTimer)
+  if (wait === 0) {
+    lastReqAt = performance.now()
+    requestPreview(id, time, seq)
+    return
+  }
+  // 节流窗口内：等窗口结束再发，发的是最新位置
+  hoverTimer = setTimeout(() => {
+    hoverTimer = null
+    lastReqAt = performance.now()
+    if (seq !== hoverSeq) return
+    requestPreview(id, time, seq)
+  }, wait)
+}
+
 async function onPlaylistClick(id: string) {
   const item = player.playlist.find((v) => v.id === id)
   if (item) {
@@ -351,6 +448,7 @@ async function onPlayLocal() {
         <div
           class="player-stage min-h-0 flex-1"
           @wheel.prevent="onWheel"
+          @mousemove="onStageMouseMove"
           @mouseenter="onStageMouseEnter"
           @mouseleave="onStageMouseLeave"
         >
@@ -389,6 +487,15 @@ async function onPlayLocal() {
             >
               <div class="h-full bg-[var(--lg-accent)]" :style="{ width: `${player.overlayProgress}%` }" />
             </div>
+          </div>
+
+          <div
+            v-if="hoverPreview && hoverPreview.src"
+            class="player-hover-preview"
+            :style="{ left: `${hoverPreview.left}px`, top: `${hoverPreview.top}px`, width: `${PREVIEW_W}px` }"
+          >
+            <img :src="hoverPreview.src" :alt="''" />
+            <span class="player-hover-preview-time">{{ formatDuration(hoverPreview.time) }}</span>
           </div>
 
           <p

@@ -58,6 +58,15 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   return undefined as T
 }
 
+/** 进度条悬停预览帧（后端按 2 秒粒度抽帧并缓存） */
+export function previewUrl(videoId: string, timeSec: number, libraryId?: string | null): string {
+  const params = new URLSearchParams()
+  const lib = libraryId ?? activeLibraryId
+  if (lib) params.set('library_id', lib)
+  params.set('t', String(Math.max(0, Math.round(timeSec))))
+  return `/api/preview/${videoId}?${params.toString()}`
+}
+
 export function thumbUrl(videoId: string, version?: number, libraryId?: string | null): string {
   const params = new URLSearchParams()
   const lib = libraryId ?? activeLibraryId

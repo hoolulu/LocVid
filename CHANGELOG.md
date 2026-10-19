@@ -2,6 +2,22 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.4.0] - 2026-10-20
+
+### Added (English)
+
+- **Seek bar hover previews for the native playback path**: moving the pointer along the
+  progress bar shows the frame at that position plus its timestamp. Frames come from a new
+  `GET /api/preview/{video_id}?t=<sec>` endpoint that extracts one frame with ffmpeg and
+  caches it on disk at a 2-second granularity (first hit ≈180 ms, cached ≈10 ms). The cache
+  key includes the file mtime, so replaced or re-muxed files invalidate themselves. The
+  frontend fires the first request immediately and throttles afterwards, so sweeping the bar
+  does not spawn an ffmpeg process per pixel.
+
+### 新增（中文）
+
+- **原生播放通道的进度条悬停预览**：鼠标沿进度条移动时，显示该位置的画面和时间点。画面来自新增的 `GET /api/preview/{video_id}?t=<秒>` 接口——ffmpeg 抽一帧、按 2 秒粒度落盘缓存（首次约 180ms，命中缓存约 10ms）。缓存文件名带文件 mtime，重封装或替换后旧帧会自动失效。前端首次请求立即发出，之后按桶节流，扫动进度条不会每个像素都拉一次 ffmpeg。
+
 ## [16.3.0] - 2026-10-20
 
 ### Added (English)
