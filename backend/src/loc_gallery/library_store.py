@@ -244,7 +244,9 @@ def migrate_single_library() -> None:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(src), str(dst))
 
-    root = VIDEO_ROOT if VIDEO_ROOT else Path(r"F:\AVV")
+    # 默认库路径不写死盘符（公开仓库里不能出现本机目录）：环境变量 LOCVID_DEFAULT_LIBRARY
+    # 优先，否则回退到用户 Videos 目录。只在首次初始化时走这里。
+    root = VIDEO_ROOT if VIDEO_ROOT else (Path.home() / "Videos")
     try:
         root = root.resolve()
     except OSError:

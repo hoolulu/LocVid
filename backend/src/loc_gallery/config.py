@@ -15,7 +15,10 @@ DATA_DIR = PROJECT_ROOT / "data"
 LIBRARIES_FILE = DATA_DIR / "libraries.json"
 LIBRARIES_ROOT = DATA_DIR / "libraries"
 
-VIDEO_ROOT = Path(r"F:\AVV")
+# 默认库路径：只在旧版单库数据迁移 / 首次初始化（data/libraries.json 不存在）时用到。
+# 不写死盘符，避免公开仓库里暴露本机目录；需要指定时设环境变量 LOCVID_DEFAULT_LIBRARY。
+_DEFAULT_LIBRARY_ENV = os.environ.get("LOCVID_DEFAULT_LIBRARY", "").strip()
+VIDEO_ROOT = Path(_DEFAULT_LIBRARY_ENV) if _DEFAULT_LIBRARY_ENV else None
 
 # 全局设置（应用级）
 SETTINGS_FILE = DATA_DIR / "settings.json"
