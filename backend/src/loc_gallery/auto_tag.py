@@ -16,15 +16,59 @@ PREFIX_PAT = re.compile(
     r'^(?:'
     r'(?:hhd800|bbs2048|aavv38|zzpp08|gg5|18bt|2048|thz|mteam|jnty\d+|jjav)\w*\.?(?:com|net|cc|la|xyz|co|org|info|app)?@'
     r'|@[^@\s]+@'
-    r'|\[(?:Thz\.la|ThZu\.Cc|Spankbang|Eporner|xvideos|pornhub|123AV|FC2|MissAV|nJAV|Njavtv|JavGG)\][ _-]*'
+    r'|\[(?:Thz\.la|ThZu\.Cc|Spankbang|Eporner|xvideos|pornhub|123AV|FC2|MissAV|nJAV|Njavtv|JavGG|YouPorn|JAVHUB)\][ _-]*'
     r'|(?:jnty\d+|hhd800|bbs2048|avtb)\d*\.app[-_ ]*'
+    r'|(?:javhub|youporn|eporner|spankbang|xvideos|xhamster|pornhub|redtube)\b[\s_\-:]*'
     r'|@\w{2,20}[ _-]*'
     r')',
     re.I,
 )
 TAIL_PAT = re.compile(
     r'\s*[-–—]\s*(?:nJAV|MissAV|123AV|SpankBang|Spankbang|xhamster|Xvideos|Pornhub\.com|Eporner|BongaCams|'
-    r'BestJavPorn|hhd800|javguru|JavGG|t66y|第一会所|nyap2p\.com|javdb|javbus|Telegram|t\.me)[^/]*$',
+    r'BestJavPorn|hhd800|javguru|JavGG|YouPorn|JAVHUB|t66y|第一会所|nyap2p\.com|javdb|javbus|Telegram|t\.me)[^/]*$',
+    re.I,
+)
+
+# ── 成人站点噪音（命名五花八门，统一按“站点词/通用短语 + 可选分隔符”剥）──
+# 下载站导出的文件名把站点广告拼在前后缀，拼法五花八门：
+#   `- Free Porn Videos - <Site>`（站点在尾部，中间还夹广告短语）
+#   `<Site> <title> ...`（站点在前缀）
+#   `<title>_ Tag, <Site> & Tag Porn`（尾部整段是站点分类词）
+_SITE_NAMES = (
+    'youporn', 'javhub', 'eporner', 'spankbang', 'xvideos', 'xhamster', 'pornhub',
+    'redtube', 'txxx', 'beeg', 'thumbzilla', 'hclips', 'tnaflix', 'bongacams',
+    'hqporner', 'porntrex', 'javgg', 'missav', 'njavtv', 'njav', '123av',
+    'bestjavporn', 'javguru', 'avtb', 'porntube', 'pornone', 'hdzog',
+    'xnxx', 'xnnx', 'porn300', 'sunporno', 'pornhd', 'sexyhub', 'tube8',
+)
+_SITE_NAME = '(?:' + '|'.join(_SITE_NAMES) + ')'
+# 通用广告短语：Free Porn Videos / HD Porn Videos / Sex Videos / 单独的 Porn
+_GENERIC_SITE_PHRASE = (
+    r'(?:free\s+(?:hd\s+)?(?:porn|sex)\s+videos?|(?:hd\s+)?porn\s+videos?|sex\s+videos?|porn)'
+)
+# 尾巴：` - YouPorn` / `_xHamster` / ` | Free Porn Videos` / ` Porn`
+_SITE_TAIL_PAT = re.compile(
+    r'(?:\s*[-–—_|:]\s*|\s+(?=' + _GENERIC_SITE_PHRASE + r'|' + _SITE_NAME + r'))'
+    r'(?:' + _GENERIC_SITE_PHRASE + r'|' + _SITE_NAME + r')\s*$',
+    re.I,
+)
+# 录屏/拼合工具留下的时间戳尾巴：`-00.31.25.348-01.04.58.987`
+_TIMESTAMP_JUNK = re.compile(
+    r'\s*[-_]?\s*\d{2}\.\d{2}\.\d{2}\.\d{3}(?:[-_]\d{2}\.\d{2}\.\d{2}\.\d{3})*\s*$'
+)
+# 标题中间的站点词：`... Eporner 大屁股 ...`
+_SITE_MID_PAT = re.compile(
+    r'(?<![A-Za-z0-9])' + _SITE_NAME + r'(?![A-Za-z0-9])',
+    re.I,
+)
+# 下载站导出的尾部标签串：`_ Babe, Eporner & Solo Porn` / ` - Catman Chinese Model Asian Porn`
+# 这类尾部是站点分类词而非标题，只去了站点名会剩 `Babe, & Solo` 这种碎尾巴，
+# 整段拿掉更干净。分隔符必须带空格：否则单词里的连字符会误伤
+# （实测 `Japanese Step-Mom caught Boy watching Porn...` 被砍成 `Japanese Step`）。
+_TAG_TAIL_SEG_PAT = re.compile(
+    r'(?:\s+[-–—]\s+|\s+_\s*|\s*_\s+)'
+    r'(?=[A-Za-z0-9 ,&\'\-\.]*\b(?:porn|xxx)\b)'
+    r'[A-Za-z0-9 ,&\'\-\.]+$',
     re.I,
 )
 SER_PATTERNS = [
@@ -71,7 +115,11 @@ _SITE_PATTERNS = [
     ("来源:Xvideos", re.compile(r'xvideos', re.I)),
     ("来源:xHamster", re.compile(r'xhamster', re.I)),
     ("来源:Pornhub", re.compile(r'pornhub', re.I)),
+    ("来源:YouPorn", re.compile(r'youporn', re.I)),
+    ("来源:JAVHUB", re.compile(r'javhub', re.I)),
+    ("来源:Eporner", re.compile(r'eporner', re.I)),
     ("来源:MissAV", re.compile(r'missav', re.I)),
+    ("来源:XNXX", re.compile(r'\bxnxx\b', re.I)),
     ("来源:pym", re.compile(r'\bpym\b', re.I)),
 ]
 
@@ -137,12 +185,31 @@ def _strip_title(name_stem: str) -> str:
             break
         s = n2
     s = TAIL_PAT.sub('', s)
+    # 下载站导出的尾部标签串（含 porn/xxx 的分类词串）整段去掉
+    seg = _TAG_TAIL_SEG_PAT.search(s)
+    if seg and seg.start() > 0:
+        s = s[: seg.start()]
+    # 成人站点常见复合尾巴（`- Free Porn Videos - YouPorn`）需多轮：
+    # 每轮只剥一层，剥完记得把残留的分隔符一起清掉
+    for _ in range(5):
+        prev = s
+        s = _SITE_TAIL_PAT.sub('', s)
+        s = re.sub(r'[\s\-–—_|:]+$', '', s)
+        if s == prev:
+            break
+    s = _SITE_MID_PAT.sub(' ', s)
+    s = _TIMESTAMP_JUNK.sub('', s)
     s = re.sub(r'\s{2,}', ' ', s).strip(' \t')
     # ⚠️ 只清理分隔符/空白，不清理 [ ]：正常文件名可能含 [1080p]/[BluRay]
     #（旧版 [\[\]_\-\.]+$ 会把 [BluRay] 的 ] 删掉 → 括号不闭合 → 破坏正常视频名）
     s = re.sub(r'^[-_\.\s]+', '', s)
     s = re.sub(r'[-_\.\s]+$', '', s)
     return s.strip(' \t')
+
+
+def strip_site_noise(name_stem: str) -> str:
+    """公开版 _strip_title：去掉站点/广告前后缀，供显示标题（title.py）复用。"""
+    return _strip_title(name_stem)
 
 
 def _suggest_name(name: str) -> str | None:
