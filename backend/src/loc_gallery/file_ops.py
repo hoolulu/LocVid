@@ -9,7 +9,7 @@ from pathlib import Path
 
 from loc_gallery.config import IGNORE_DIRS
 from loc_gallery.library_store import get_library
-from loc_gallery.scanner import VideoItem, get_by_id, refresh_cache
+from loc_gallery.scanner import VideoItem, get_by_id, refresh_cache, remove_videos_from_cache
 
 _INVALID_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -151,7 +151,9 @@ def delete_videos(library_id: str, video_ids: list[str]) -> dict:
             errors.append({"id": vid, "error": str(exc)})
 
     if deleted:
-        refresh_cache(library_id)
+        # 增量剔除即可：文件刚被移入回收站，watchdog 会在 1.5s 后线程内全库校验一次。
+        # 这里重扫全库会同步冻结事件循环（大库 1s+），正在播放的视频流随之卡顿。
+        remove_videos_from_cache(library_id, deleted)
     return {"deleted": deleted, "errors": errors}
 
 

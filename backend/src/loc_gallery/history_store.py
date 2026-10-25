@@ -81,6 +81,17 @@ def get_entry(library_id: str, video_id: str) -> dict | None:
     return dict(entry) if entry else None
 
 
+def all_items(library_id: str) -> dict[str, dict]:
+    """一次性取全库播放历史快照（键是 video_id）。
+
+    get_entry 每次调用都会 read_text + json.loads 整个 play_history.json（182KB）。
+    全库统计循环里逐条调它 = 读盘 300MB 以上，秒级阻塞；这类循环先取快照再查。
+    """
+    with _lock:
+        items = _load_raw(library_id).get("items") or {}
+    return {k: dict(v) for k, v in items.items() if isinstance(v, dict)}
+
+
 def record_play(library_id: str, video_id: str) -> dict:
     now = time.time()
     with _lock:

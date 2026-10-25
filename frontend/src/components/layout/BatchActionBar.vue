@@ -13,6 +13,8 @@ import { useGalleryStore } from '@/stores/gallery'
 
 import { useUiStore } from '@/stores/ui'
 
+import { suppressVersionLoad } from '@/composables/useSSE'
+
 
 
 const ui = useUiStore()
@@ -42,6 +44,9 @@ async function onDelete() {
   if (!ok) return
 
   await deleteVideos(ids.value)
+
+  // 同右键删除：自己马上要重拉列表，压掉 SSE version 带来的第二次 loadVideos
+  suppressVersionLoad(2500)
 
   ui.clearSelection(true)
 

@@ -222,7 +222,7 @@ from loc_gallery.library_store import (
 from loc_gallery.scanner import (
     get_all, get_by_id, get_categories, get_category_sorted_ids, get_folder_tree,
     get_sorted_ids, get_version,
-    refresh_cache, upsert_video_from_path,
+    refresh_cache, remove_videos_from_cache, upsert_video_from_path,
 )
 from loc_gallery.settings_store import load_settings, save_settings
 from loc_gallery.service_ctl import schedule_service_restart
@@ -1683,24 +1683,19 @@ def _schedule_rescan(library_id: str) -> None:
     threading.Thread(target=_run, daemon=True, name="bg-rescan").start()
 
 
-@app.post("/api/folders/delete")
-async def api_folders_delete(req: Request, library_id: str = Depends(resolve_library_id)):
-    """Delete all videos in a folder (and subfolders). Files moved to recycle bin."""
+def _delete_folder_videos(
+    library_id: str, category: str, folder: str, ftype: str
+) -> dict:
+    """文件夹删除的同步部分：逐个进回收站 + 增量剔除缓存 + 后台重扫。"""
     from loc_gallery.file_ops import delete_path_to_recycle_bin
 
-    body = await req.json()
-    category = (body.get("category") or "").strip()
-    folder = (body.get("folder") or "").strip()
-    ftype = body.get("type", "subdir")
-    if not category:
-        raise HTTPException(400, "需要指定分类")
-
+    set_thread_library(library_id)
     if ftype == "cat":
         # Deleting a top-level category directory
         items = _filter_videos_list(library_id, category=folder)
     else:
         items = _filter_videos_list(library_id, category=category, folder=folder)
-    deleted = 0
+    deleted_ids: list[str] = []
     errors = 0
     for v in items:
         path = Path(v.path)
@@ -1708,13 +1703,29 @@ async def api_folders_delete(req: Request, library_id: str = Depends(resolve_lib
             continue
         try:
             delete_path_to_recycle_bin(library_id, path)
-            deleted += 1
+            deleted_ids.append(v.id)
         except (ValueError, OSError):
             errors += 1
-    if deleted:
-        refresh_cache(library_id)
+    if deleted_ids:
+        # 同上：增量剔除，全库重扫交给 watchdog/bash 后台，不在删除请求里同步扫
+        remove_videos_from_cache(library_id, deleted_ids)
+        _after_file_change(library_id, deleted_ids, full_sync=False)
         _schedule_rescan(library_id)
-    return {"ok": True, "deleted": deleted, "errors": errors}
+    return {"ok": True, "deleted": len(deleted_ids), "errors": errors}
+
+
+@app.post("/api/folders/delete")
+async def api_folders_delete(req: Request, library_id: str = Depends(resolve_library_id)):
+    """Delete all videos in a folder (and subfolders). Files moved to recycle bin."""
+    body = await req.json()
+    category = (body.get("category") or "").strip()
+    folder = (body.get("folder") or "").strip()
+    ftype = body.get("type", "subdir")
+    if not category:
+        raise HTTPException(400, "需要指定分类")
+
+    # 整个删除循环含 SHFileOperationW 同步阻塞，不能占着事件循环
+    return await asyncio.to_thread(_delete_folder_videos, library_id, category, folder, ftype)
 
 
 @app.post("/api/folders/rename")
@@ -2046,8 +2057,8 @@ async def api_durations(
 
 @app.get("/api/duration/status")
 async def api_duration_status(library_id: str = Depends(resolve_library_id)):
-    """全库视频时长探测进度。"""
-    return get_duration_status(library_id)
+    """全库视频时长探测进度。同步全库循环，必须走线程（阻塞事件循环会断流）。"""
+    return await _in_library_thread(library_id, get_duration_status, library_id)
 
 
 @app.get("/api/remux/status")
@@ -2415,6 +2426,21 @@ async def api_history_clear(library_id: str = Depends(resolve_library_id)):
     return {"ok": True, "removed": removed}
 
 
+async def _in_library_thread(library_id: str, fn, *args):
+    """把同步磁盘活丢线程池，并在新线程里显式设置库上下文。
+
+    直接在 async 端点里跑同步循环会冻结整个事件循环：/api/stream 的 Range 分片
+    发不出去，正在播放的视频就断几秒。新线程不继承 ContextVar，不设库上下文时
+    thumb_manager 的 _lid() 会回退到活跃库，多库下算错库。
+    """
+
+    def _run():
+        set_thread_library(library_id)
+        return fn(*args)
+
+    return await asyncio.to_thread(_run)
+
+
 @app.get("/api/thumb/status")
 async def api_thumb_status(
     category: str | None = None,
@@ -2422,15 +2448,22 @@ async def api_thumb_status(
     library_id: str = Depends(resolve_library_id),
 ):
     ids = [x.strip() for x in page_ids.split(",") if x.strip()] if page_ids else None
-    result = get_status(category, ids)
-    result["worker"] = get_worker_health()
-    return result
+
+    def _build():
+        result = get_status(category, ids)
+        result["worker"] = get_worker_health()
+        return result
+
+    return await _in_library_thread(library_id, _build)
 
 
 @app.get("/api/thumb/failed")
 async def api_thumb_failed(library_id: str = Depends(resolve_library_id)):
-    items = get_failed_items()
-    return {"items": items, "total": len(items)}
+    def _build():
+        items = get_failed_items()
+        return {"items": items, "total": len(items)}
+
+    return await _in_library_thread(library_id, _build)
 
 
 @app.get("/api/thumb/stats")
@@ -2438,21 +2471,27 @@ async def api_thumb_stats(library_id: str = Depends(resolve_library_id)):
     """缩略图缓存占用统计（设置页维护入口用）。
 
     只统计 *.jpg 缩略图本体：目录里的 index.json 等非缩略图文件不计入，
-    否则"107 个文件"与 106 个视频对不上让用户困惑（计数口径与视频数直接可比）。"""
-    from loc_gallery.config import thumb_dir
-    tdir = thumb_dir(library_id)
-    files = 0
-    total = 0
-    if tdir.exists():
-        for p in tdir.glob("*.jpg"):
-            if not p.is_file():
-                continue
-            files += 1
-            try:
-                total += p.stat().st_size
-            except OSError:
-                pass
-    return {"files": files, "bytes": total}
+    否则"107 个文件"与 106 个视频对不上让用户困惑（计数口径与视频数直接可比）。
+    """
+
+    def _build():
+        from loc_gallery.config import thumb_dir
+
+        tdir = thumb_dir(library_id)
+        files = 0
+        total = 0
+        if tdir.exists():
+            for p in tdir.glob("*.jpg"):
+                if not p.is_file():
+                    continue
+                files += 1
+                try:
+                    total += p.stat().st_size
+                except OSError:
+                    pass
+        return {"files": files, "bytes": total}
+
+    return await _in_library_thread(library_id, _build)
 
 
 
@@ -2760,28 +2799,47 @@ async def api_open_folder(video_id: str, library_id: str = Depends(resolve_libra
     return {"ok": True, "folder": folder}
 
 
-def _after_file_change(library_id: str, old_ids: list[str] | None = None) -> None:
+def _after_file_change(
+    library_id: str,
+    old_ids: list[str] | None = None,
+    *,
+    full_sync: bool = True,
+) -> None:
+    """文件变更后的索引/用户数据收尾。
+
+    full_sync=False 供删除路径用：被删 video 已从缓存增量剔除，sync_index_with_videos
+    的全量 stat 循环（上千条约 1.0s）对删除没有意义，cleanup_orphans 已清掉那几条索引。
+    """
     set_thread_library(library_id)
     if old_ids:
         remove_thumbs(old_ids)
         remove_favorites(library_id, old_ids)
         remove_history(library_id, old_ids)
         remove_video_from_all_albums(library_id, old_ids)
-    sync_index_with_videos()
+    if full_sync:
+        sync_index_with_videos()
     cleanup_orphans()
     _prune_user_data(library_id)
     _broadcast("version", library_id, str(get_version(library_id)))
     _broadcast("progress", library_id)
 
 
+def _delete_videos_and_settle(library_id: str, video_ids: list[str]) -> dict:
+    """删除视频 + 收尾，整段是同步磁盘活，只能在线程里跑。"""
+    set_thread_library(library_id)
+    result = delete_videos(library_id, video_ids)
+    if result["deleted"]:
+        _after_file_change(library_id, result["deleted"], full_sync=False)
+    return result
+
+
 @app.post("/api/videos/delete")
 async def api_videos_delete(req: DeleteRequest, library_id: str = Depends(resolve_library_id)):
     if not req.ids:
         raise HTTPException(400, "未选择视频")
-    result = delete_videos(library_id, req.ids)
-    if result["deleted"]:
-        _after_file_change(library_id, result["deleted"])
-    return result
+    # SHFileOperationW 删到回收站、缩略图/JSON 落盘、进度广播前的索引收尾全是同步活，
+    # 直接跑在事件循环里会冻结所有 API/SSE/视频流（播放中断若干秒），必须丢线程池。
+    return await asyncio.to_thread(_delete_videos_and_settle, library_id, req.ids)
 
 
 @app.post("/api/videos/rename")

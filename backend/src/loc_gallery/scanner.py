@@ -272,6 +272,27 @@ def refresh_cache(library_id: str, video_root: Path | None = None) -> int:
         return _versions[library_id]
 
 
+def remove_videos_from_cache(library_id: str, video_ids: list[str]) -> int:
+    """从内存索引增量剔除视频（文件已删除时调用，避免全库重扫）。返回实际移除数。
+
+    删除一个视频不该触发 scan_all：上千条的库重扫约 0.9s，加上缩略图索引全量同步
+    1.0s，整段同步阻塞事件循环会让正在播放的视频流取不到下一块分片。
+    """
+    with _lock:
+        cache = _caches.get(library_id)
+        if not cache:
+            return 0
+        removed = 0
+        for vid in video_ids:
+            if cache.pop(vid, None) is not None:
+                removed += 1
+        if removed:
+            _versions[library_id] = _versions.get(library_id, 0) + 1
+            _sort_id_indexes.pop(library_id, None)
+            _category_items.pop(library_id, None)
+        return removed
+
+
 def refresh_all_libraries() -> None:
     from loc_gallery.library_store import list_libraries
     for lib in list_libraries():

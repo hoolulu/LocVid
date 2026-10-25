@@ -77,6 +77,17 @@ def is_pending(path: Path) -> bool:
     return str(path.resolve()) in _pending
 
 
+def is_pending_path(path_str: str) -> bool:
+    """快速版 is_pending：只拿字符串直接查集合，不做 resolve/stat。
+
+    统计/进度类循环（上千条视频）逐条 resolve 要 1 秒，全部挤在事件循环里
+    会把正在播放的流冻住几秒。索引里的 path 是扫描时拼的绝对路径，
+    与 _pending 的 key 同一形态，直接比字符串命中率足够；
+    漏判只影响「正在写入的文件被算进统计」这一条，不值得为它付 resolve 的代价。
+    """
+    return path_str in _pending
+
+
 def is_ready_for_index(path: Path, *, notify: bool = True, library_id: str | None = None) -> bool:
     """是否可纳入视频库索引（扫描层快速判断，不阻塞）。
 

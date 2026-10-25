@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted } from 'vue'
 import { openFolder, renameVideo, deleteVideos } from '@/api/files'
+import { suppressVersionLoad } from '@/composables/useSSE'
 import { regenerateThumbSmart } from '@/composables/useThumbRegenerate'
 import { useGalleryPlay } from '@/composables/useGalleryPlay'
 import { usePlayback } from '@/composables/usePlayback'
@@ -168,6 +169,9 @@ export function setupVideoContextActions() {
       const wasPlaying = player.playingId === id
       const idx = player.playlist.findIndex((v) => v.id === id)
       await deleteVideos([id])
+      // 删除后自己会重拉列表；后端广播的 version 事件 500ms 后还会再拉一次，
+      // 两次 loadVideos 叠在一起会让大库的播放页卡一下，这里压掉 SSE 那次
+      suppressVersionLoad(2500)
       const remaining = player.playlist.filter((v) => v.id !== id)
       player.playlist = remaining
       if (wasPlaying) {

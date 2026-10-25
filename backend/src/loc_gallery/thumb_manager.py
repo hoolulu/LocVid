@@ -19,7 +19,12 @@ from PIL import Image, ImageFilter, ImageStat
 from loc_gallery.config import THUMB_WORKERS, FILE_STABLE_CHECK_DELAY, thumb_dir, thumb_index_file
 from loc_gallery.library_context import current_library_id, set_thread_library
 from loc_gallery.library_store import get_active_library_id, list_libraries
-from loc_gallery.file_stability import is_ready_for_processing, is_ready_for_video
+from loc_gallery.file_stability import (
+    is_incomplete_filename,
+    is_pending_path,
+    is_ready_for_processing,
+    is_ready_for_video,
+)
 from loc_gallery.process_util import hidden_subprocess_kwargs, kill_process_tree
 from loc_gallery.scanner import VideoItem, get_all, get_by_id
 from loc_gallery.settings_store import get_setting
@@ -43,6 +48,19 @@ def _known_duration_sec(library_id: str, item: VideoItem) -> float | None:
     if cached:
         return cached
     return _history_duration_sec(library_id, item.id)
+
+
+def _known_duration_sec_cached(item: VideoItem, hist_map: dict[str, dict]) -> float | None:
+    """同 _known_duration_sec，但历史用外部传入的一次性快照，不逐条读盘。"""
+    cached = get_video_duration_sec(item.id, mtime=item.mtime, size=item.size)
+    if cached:
+        return cached
+    entry = hist_map.get(item.id) or {}
+    try:
+        val = float(entry.get("duration_sec") or 0)
+    except (TypeError, ValueError):
+        return None
+    return val if val > 3 else None
 
 
 def _seed_duration_from_history(library_id: str, item: VideoItem) -> float | None:
@@ -410,13 +428,26 @@ def _video_is_processable(item: VideoItem) -> bool:
     return is_ready_for_video(Path(item.path), size=item.size, mtime=item.mtime)
 
 
+def _video_is_countable(item: VideoItem) -> bool:
+    """统计上下文专用：不 resolve、不 stat，纯内存判断。
+
+    _video_is_processable 每调一次要做 is_file + resolve + stat，上千条的库跑一遍
+    就是 1 秒；缩略图/时长进度接口、状态缓存重建、对账循环全都是这种全库循环，
+    以前直接跑在事件循环里，-- 一跑就把正在播放的流冻住 1～2 秒。
+    索引里的条目录入时已过扫描层过滤并稳定过，这里只需排除"还在写入"的。
+    """
+    if is_incomplete_filename(item.filename):
+        return False
+    return not is_pending_path(item.path)
+
+
 def reconcile_deferred_thumbs() -> int:
     """下载/写入中的视频若被标为失败，改回等待状态，不计入失败列表。"""
     changed = 0
     with _lock:
         for vid, entry in list(_idx().items()):
             item = get_by_id(_lid(), vid)
-            if item and _video_is_processable(item):
+            if item and _video_is_countable(item):
                 continue
             st = entry.get("status")
             if st in (STATUS_FAILED, STATUS_GENERATING, STATUS_QUEUED):
@@ -430,14 +461,14 @@ def reconcile_deferred_thumbs() -> int:
         for tkey in list(_generating):
             lid, vid = tkey.split(":", 1)
             item = get_by_id(lid, vid)
-            if not item or not _video_is_processable(item):
+            if not item or not _video_is_countable(item):
                 _generating.discard(tkey)
                 _generating_started.pop(tkey, None)
                 changed += 1
         before_q = len(_queue)
         _queue[:] = [
             q for q in _queue
-            if (item := get_by_id(q.library_id or _lid(), q.video_id)) and _video_is_processable(item)
+            if (item := get_by_id(q.library_id or _lid(), q.video_id)) and _video_is_countable(item)
         ]
         if len(_queue) != before_q:
             changed += 1
@@ -668,7 +699,7 @@ def _rebuild_status_cache() -> None:
         if st == STATUS_READY:
             counts["ready"] += 1
             continue
-        if not _video_is_processable(item):
+        if not _video_is_countable(item):
             continue
         if vid in generating_ids:
             counts["generating"] += 1
@@ -1374,15 +1405,20 @@ def get_duration_status(library_id: str) -> dict:
         st = dict(cached[1])
     else:
         set_thread_library(library_id)
+        from loc_gallery.history_store import all_items as all_history
+
         total = 0
         cached_count = 0
         skipped = 0
+        # 历史只取一次快照：逐条 get_entry 会重复 read_text + json.loads 整个
+        # play_history.json（上千条 × 180KB ≈ 读盘数百 MB），这是本接口 1 秒的主因
+        hist_map = all_history(library_id)
         for item in get_all(library_id):
-            if not _video_is_processable(item):
+            if not _video_is_countable(item):
                 skipped += 1
                 continue
             total += 1
-            if _known_duration_sec(library_id, item):
+            if _known_duration_sec_cached(item, hist_map):
                 cached_count += 1
         pending = max(0, total - cached_count)
         percent = round(cached_count / total * 100, 1) if total else 100.0
