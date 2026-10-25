@@ -56,12 +56,12 @@ _SITE_TAIL_PAT = re.compile(
 _TIMESTAMP_JUNK = re.compile(
     r'\s*[-_]?\s*\d{2}\.\d{2}\.\d{2}\.\d{3}(?:[-_]\d{2}\.\d{2}\.\d{2}\.\d{3})*\s*$'
 )
-# 标题中间的站点词：`... Eporner 大屁股 ...`
+# 标题中间夹着的站点词（前后带分隔符）
 _SITE_MID_PAT = re.compile(
     r'(?<![A-Za-z0-9])' + _SITE_NAME + r'(?![A-Za-z0-9])',
     re.I,
 )
-# 下载站导出的尾部标签串：`_ Babe, Eporner & Solo Porn` / ` - Catman Chinese Model Asian Porn`
+# 下载站导出的尾部标签串：`_ Tag, <Site> & Tag Porn` / ` - Tag Tag Porn`
 # 这类尾部是站点分类词而非标题，只去了站点名会剩 `Babe, & Solo` 这种碎尾巴，
 # 整段拿掉更干净。分隔符必须带空格：否则单词里的连字符会误伤
 # （实测 `Japanese Step-Mom caught Boy watching Porn...` 被砍成 `Japanese Step`）。
@@ -82,10 +82,10 @@ SER_PATTERNS = [
 ]
 DATE_CODE = re.compile(r'(?<![0-9])\d{6}[-_]\d{3,4}')
 # 番号：字母前缀 2~6 位 + 分隔符 + 2~5 位数字。
-# 前缀最多允许 3 位数字（200GANA-3475 / 420HOI-245 / 546EROFV-392 这类，
+# 前缀最多允许 3 位数字（200ABC-123 / 420XYZ-456 这类，
 # 字母前面是数字，旧的 (?<![a-zA-Z0-9]) 会把它们整条挡掉），数字前缀一并算进番号；
 # 上限卡在 3 位是刻意的——放开会开始匹配标题里的普通词组。
-CODE = re.compile(r'(?:^|[^A-Za-z0-9])(\d{0,3}[A-Za-z]{2,6}[-_]\d{2,5})(?![A-Za-z0-9])')
+CODE = re.compile(r'(?:^|[^A-Za-z0-9])(\d{0,3}[A-Za-z]{2,6}[-_]\d{2,5}[A-Za-z]?)(?![A-Za-z0-9])')
 TECH = re.compile(
     # (?<![A-Za-z]) 是必需的：没有它，标题末尾单词的尾字母会被当成技术标记
     # （实测 "...Older Sister Electric" → 尾巴的 c 被当成 -C → 建议名多出 " c"）
@@ -144,7 +144,7 @@ def _vendor_tag(name: str) -> str | None:
     m = CODE.search(name)
     if not m:
         return None
-    # group(1) 是完整番号（可能带数字前缀，如 200GANA-3475）；厂商标签只取字母段
+    # group(1) 是完整番号（可能带数字前缀，如 200ABC-123）；厂商标签只取字母段
     letter = re.match(r'\d{0,3}([A-Za-z]{2,6})', m.group(1))
     if not letter:
         return None
@@ -172,7 +172,7 @@ def _extract_code(name: str) -> str | None:
     m = CODE.search(name)
     if m:
         # group(1) 含可能的数字前缀；只把字母部分转大写，数字原样保留
-        return re.sub(r'[A-Za-z]{2,6}', lambda x: x.group(0).upper(), m.group(1))
+        return re.sub(r'[A-Za-z]+', lambda x: x.group(0).upper(), m.group(1))
     return None
 
 

@@ -2,6 +2,71 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.5.0] - 2026-10-26
+
+### Added (English)
+
+- **Pause switch for automatic remux**: a button in Settings → Playback next to the auto-repair
+  option stops the queue on demand, so bulk downloads do not compete for disk I/O. Files keep
+  importing and remain playable; thumbnails and durations are filled in after resuming.
+- **Fragment-aware playback decisions**: fragmented MP4 (hundreds to thousands of `mdat` boxes)
+  now gets queued for a one-off remux, because browser start-up on such files costs ~10 s
+  (measured: 10.2 s vs 0.14 s for a standard MP4 of similar size). Standard MP4 keeps the
+  native hardware-decode path with no conversion.
+- **Codes with a trailing letter**: identifiers such as `SSIS-001A` are recognised now; they
+  were previously skipped and the file kept its full title.
+
+### Changed (English)
+
+- **Title and filename cleaning** covers more download-site noise: site names in prefixes,
+  suffixes and mid-title, generic advertising phrases, downloaded-site tag tails, and screen
+  recorder timestamps. Display titles are cleaned before truncation; CJK titles allow 24
+  characters, latin titles are cut at word boundaries.
+- **Default library path is configurable** through `LOCVID_DEFAULT_LIBRARY` instead of a
+  hard-coded drive path (used only when `data/libraries.json` does not exist yet).
+
+### Fixed (English)
+
+- **Deleting a video froze playback for seconds (P0)**: the delete endpoint ran
+  `SHFileOperationW`, a full library rescan and a thumbnail-index sync on the event loop, so
+  stream requests stalled. Everything moved to a worker thread; the cache now drops the
+  deleted ids incrementally, and the thumbnail/duration status endpoints no longer block.
+  Measured: status endpoints 1.5 s → 20 ms, delete request 131 ms, stream gaps 0.
+- **Placeholder files were imported as videos (P1)**: downloaders write a few bytes first
+  (e.g. `PLACEHOLDER`); those were indexed and auto-renamed to a real code, after which the
+  real data landed under the wrong name. Files below 1 MB are no longer treated as videos.
+- **Remux could start on a file still being written (P1)**: stability was judged by mtime only,
+  so an HLS download that paused for 20 s looked finished. A Windows handle check now verifies
+  that nobody holds a write handle before renaming or remuxing.
+
+### 新增（中文）
+
+- **自动重封装暂停开关**：设置 → 播放 → 自动修复旁新增按钮，下载高峰期可以随手停掉队列，
+  避免和下载抢磁盘。暂停期间文件照常入库、照常播放，缩略图和时长等恢复后统一补齐。
+- **碎片化 MP4 的播放判定**：带几百上千个 `mdat` 分片的文件改为排队做一次重封装——实测
+  1.4GB 碎片化文件起播要 10.2 秒，同尺寸标准 MP4 只要 0.14 秒。标准 MP4 继续走浏览器原生
+  硬解，不做任何转换。
+- **数字后带字母的番号**：`SSIS-001A` 这类以前识别不到，文件会一直保留完整长标题，现在能
+  正常提取番号并改名。
+
+### 变更（中文）
+
+- **标题与文件名清洗**覆盖更多下载站噪音：前缀、后缀、标题中间的站点名，通用广告短语，
+  下载站导出的标签串，以及录屏工具留下的时间戳。显示标题先清洗再截断；中日文放宽到 24 字，
+  英文按词边界截到 48 字符。
+- **默认库路径改为可配置**：通过环境变量 `LOCVID_DEFAULT_LIBRARY` 指定，不再写死盘符
+  （只在 `data/libraries.json` 尚未创建时用到）。
+
+### 修复（中文）
+
+- **删除视频会让正在播放的视频卡几秒（P0）**：删除接口在事件循环里跑回收站调用、全库重扫和
+  缩略图索引同步，流请求被堵住。现在整段移入工作线程，缓存改为增量剔除被删 id，缩略图/时长
+  状态接口也不再阻塞。实测状态接口 1.5 秒 → 20 毫秒，删除请求 131 毫秒，流停顿 0 次。
+- **下载器占位文件被当成视频入库（P1）**：下载器会先写几个字节（如 `PLACEHOLDER`），以前会
+  被索引并按番号改名，真实数据随后落到错的文件名下。现在小于 1MB 的文件不算视频。
+- **重封装可能对还在写入的文件动手（P1）**：稳定性只按 mtime 判断，HLS 拉流卡 20 秒就会被
+  当成下载完成。现在改名和重封装之前会检查 Windows 文件句柄，确认没有其他进程正在写。
+
 ## [16.4.0] - 2026-10-20
 
 ### Added (English)

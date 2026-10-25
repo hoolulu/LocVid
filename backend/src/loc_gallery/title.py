@@ -4,8 +4,9 @@ from pathlib import Path
 
 from loc_gallery.auto_tag import strip_site_noise
 
-# 匹配 ABC-123、XYZ-540 等编号（有 - 的番号分支，勿改）
-_CODE_PATTERN = re.compile(r"[A-Za-z0-9]+-\d+")
+# 匹配 ABC-123、XYZ-540 等编号；数字后允许跟一个字母（SSIS-001A 这类），
+# 与 auto_tag.CODE 的判定保持一致，否则列表标题和文件名对不上
+_CODE_PATTERN = re.compile(r"[A-Za-z0-9]+-\d+[A-Za-z]?")
 
 # 含中日文的标题：按字数截
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]")

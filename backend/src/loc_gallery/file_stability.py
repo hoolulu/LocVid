@@ -2,17 +2,66 @@
 """检测未完成下载/正在写入的视频，避免过早触发自动处理。"""
 from __future__ import annotations
 
+import ctypes
+import sys
 import threading
 import time
+from ctypes import wintypes
 from pathlib import Path
 from typing import Callable
 
 from loc_gallery.config import (
     FILE_RECENT_MODIFY_SEC,
+    MIN_VIDEO_BYTES,
     FILE_STABLE_CHECK_DELAY,
     FILE_STABLE_SAMPLE_INTERVAL,
     VIDEO_EXTENSIONS,
 )
+
+# ── Windows：文件是否还被别的进程以写方式打开 ──
+_GENERIC_READ = 0x80000000
+_FILE_SHARE_READ = 0x00000001
+_OPEN_EXISTING = 3
+_INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
+# 只对 mtime 在这个窗口内的文件检查“是否还有写句柄”
+WRITER_CHECK_WINDOW_SEC = 3600
+
+if sys.platform == "win32":
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _kernel32.CreateFileW.restype = wintypes.HANDLE
+    _kernel32.CreateFileW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    ]
+    _kernel32.CloseHandle.restype = wintypes.BOOL
+    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+else:  # pragma: no cover - 项目 Windows 优先
+    _kernel32 = None
+
+
+def has_open_writer(path: Path) -> bool:
+    """是否还有别的进程以「写」方式打开这个文件（Windows）。
+
+    只看 mtime 太草率：HLS 拉流卡一下就可能超过 20 秒没有任何写入，文件被当成
+    “稳定”，接着被自动命名/入库；下载器那边句柄随即失效，写入报错，数据就废了。
+
+    以 GENERIC_READ + FILE_SHARE_READ 打开：
+    - 别人只读（播放器、索引工具）→ 打得开，不算在写
+    - 别人握着写句柄（浏览器扩展的 createWritable、下载器逐块写）→ 共享冲突打不开，算在写
+    """
+    if _kernel32 is None:
+        return False
+    try:
+        handle = _kernel32.CreateFileW(
+            str(path), _GENERIC_READ, _FILE_SHARE_READ, None, _OPEN_EXISTING, 0, None,
+        )
+    except Exception:
+        return False
+    if not handle or handle == _INVALID_HANDLE_VALUE:
+        return True
+    _kernel32.CloseHandle(handle)
+    return False
 
 _INCOMPLETE_MARKERS = (
     ".part",
@@ -115,7 +164,12 @@ def is_ready_for_index(path: Path, *, notify: bool = True, library_id: str | Non
     if is_pending(path):
         return False
     snap = _stat(path)
-    if snap and (time.time() - snap[1]) < FILE_RECENT_MODIFY_SEC:
+    if not snap:
+        return False
+    if snap[0] < MIN_VIDEO_BYTES:
+        # 占位文件（下载器先写 11 字节的 PLACEHOLDER 之类）不是视频
+        return False
+    if (time.time() - snap[1]) < FILE_RECENT_MODIFY_SEC:
         if notify:
             from loc_gallery.library_context import current_library_id
 
@@ -130,7 +184,14 @@ def is_ready_for_processing(path: Path) -> bool:
     不触发 notify：处理流程自身有延迟重试（_process_one 5s Timer / _repair_one 重入队），
     若在此触发 notify_file_activity 会重建稳定定时器 → 稳定回调重跑完整管道（重复处理）。
     """
-    return is_ready_for_index(path, notify=False)
+    if not is_ready_for_index(path, notify=False):
+        return False
+    # 扫描阶段不做句柄检测（全盘几千个文件挨个打开，撞上浏览器写入会让下载器报错）。
+    # 只在真要处理这个文件时查一次：还被写着就先放着，等下一轮。
+    snap = _stat(path)
+    if snap and (time.time() - snap[1]) < WRITER_CHECK_WINDOW_SEC and has_open_writer(path):
+        return False
+    return True
 
 
 def is_ready_for_video(path: Path, *, size: int, mtime: float) -> bool:

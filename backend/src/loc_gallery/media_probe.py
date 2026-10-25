@@ -23,7 +23,7 @@ _HLS_TRANSCODE_VIDEO = {"av1", "hevc", "h265", "vp9"}
 _IMAGE_CODECS = {"png", "mjpeg", "jpeg", "apng", "gif", "bmp", "webp"}
 _BROWSER_NATIVE_EXTENSIONS = {".mp4", ".m4v", ".mov"}
 _WEB_DIRECT_EXTENSIONS = {".webm", ".ogv"}
-_PLAN_VERSION = 19
+_PLAN_VERSION = 21
 _H264_NAL_SIGS = (
     b"\x00\x00\x00\x01\x67", b"\x00\x00\x00\x01\x68", b"\x00\x00\x00\x01\x65",
     b"\x00\x00\x01\x67", b"\x00\x00\x01\x68",
@@ -704,11 +704,14 @@ def _build_playback_plan(path: Path) -> dict:
         return _plan_modern_codec_direct(codec, structure=structure, container=sniff)
 
     if kind == "fragmented":
-        # 碎片化 / 多段 mdat MP4：movi-player 的 mp4box 无法解析其 moov，播放前自动重封装
+        # 碎片化 MP4（多段 mdat）：浏览器能直接播，但起播要扫完整个分片结构——
+        # 实测 1.4GB / 1634 个 mdat，loadedmetadata 要 10 秒，标准 MP4 只要 0.14 秒。
+        # movi-player 的 mp4box 又解不了这种 moov，所以只能先重封装成标准 MP4，
+        # 一次读写换以后每次秒起。
         return {
             "mode": "hls",
             "transcode": False,
-            "reason": "碎片化 MP4（部分站点源），播放前自动重封装修复",
+            "reason": "碎片化 MP4（多段 mdat），起播慢，后台重封装后走原生",
             "codec": codec,
             "structure": structure,
         }

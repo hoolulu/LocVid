@@ -13,7 +13,7 @@ import {
   updateLibrary,
 } from '@/api/files'
 import { exportData, importData } from '@/api'
-import { cleanupOrphans, getThumbStats } from '@/api/thumbs'
+import { cleanupOrphans, getThumbStats, getGlobalRemuxStatus, pauseAutoRemux, resumeAutoRemux } from '@/api/thumbs'
 import { getGallerySortOptions } from '@/constants/sort'
 import { t, useI18n, type Locale } from '@/i18n'
 import type { Settings } from '@/types'
@@ -42,6 +42,30 @@ const customPageSize = ref('40')
 
 // 缩略图维护（占用统计 / 清理孤立 / 重生成失败）
 const thumbStats = ref<{ files: number; bytes: number } | null>(null)
+
+// 自动重封装开关（下载高峰期临时暂停，避免读写抢磁盘）
+const remuxPaused = ref(false)
+
+async function refreshRemuxPaused() {
+  try {
+    const st = await getGlobalRemuxStatus()
+    remuxPaused.value = !!st.paused
+  } catch {
+    /* 后端老版本没有这个字段，保持默认 */
+  }
+}
+
+async function toggleRemuxPause() {
+  const next = !remuxPaused.value
+  try {
+    if (next) await pauseAutoRemux()
+    else await resumeAutoRemux()
+    remuxPaused.value = next
+    ui.showToast(next ? '已暂停自动重封装' : '已恢复自动重封装')
+  } catch {
+    ui.showToast('操作失败，请稍后重试', 'error')
+  }
+}
 
 async function loadThumbStats() {
   try {
@@ -104,7 +128,16 @@ onMounted(async () => {
   await settings.loadSettings()
   Object.assign(form, settings.settings || {})
   syncPageSizeFromForm()
+  void refreshRemuxPaused()
 })
+
+// 每次打开设置页都重新读一次（开关可能是别的标签页切的）
+watch(
+  () => ui.settingsOpen,
+  (open) => {
+    if (open) void refreshRemuxPaused()
+  },
+)
 
 watch(
   () => form.ui_theme,
@@ -440,6 +473,17 @@ watch(tab, (t) => {
                       <option :value="false">{{ t('settings.off') }}</option>
                     </select>
                   </label>
+                  <div class="settings-field">
+                    <span class="settings-field-label">自动重封装开关</span>
+                    <div class="flex items-center gap-2">
+                      <button type="button" class="settings-btn" @click="toggleRemuxPause">
+                        {{ remuxPaused ? '已暂停，点此恢复' : '正常，点此暂停' }}
+                      </button>
+                      <span class="settings-field-hint">
+                        {{ remuxPaused ? '下载高峰期可先暂停，下完再恢复' : '每个文件都要读写一遍，会跟下载抢磁盘' }}
+                      </span>
+                    </div>
+                  </div>
                   <label class="settings-field">
                     <span class="settings-field-label">{{ t('settings.seekPreview') }}</span>
                     <select v-model="form.html5_seek_preview" class="settings-input">

@@ -606,9 +606,13 @@ def _apply_auto_naming(library_id: str, item):
     if suggested and suggested != item.filename:
         try:
             from loc_gallery.file_ops import _migrate_video_id
+            from loc_gallery.file_stability import has_open_writer
 
             src = Path(item.path)
             if not src.is_file():
+                return item
+            # 文件还被浏览器/下载器写着：这一轮先不改名，等它写完
+            if has_open_writer(src):
                 return item
             dst = _resolve_auto_rename_dst(src, suggested)
             if dst is not None:
@@ -829,7 +833,7 @@ class _ChangeHandler(FileSystemEventHandler):
 
 def _start_watchers() -> None:
     global _observers
-    # 临时禁用 watchdog（AVV 批量整理期间，config.WATCHDOG_ENABLED=False）：
+    # 临时禁用 watchdog（批量整理期间，config.WATCHDOG_ENABLED=False）：
     # 避免移动/改名产生的海量文件事件触发反复全库刷新导致服务卡死
     from loc_gallery.config import WATCHDOG_ENABLED
     if not WATCHDOG_ENABLED:
@@ -2697,6 +2701,23 @@ async def api_video_remux_start(video_id: str, library_id: str = Depends(resolve
     if not result.get("ok"):
         raise HTTPException(400, result.get("error") or "无法开始修复")
     return result
+
+
+@app.post("/api/remux/pause")
+async def api_remux_pause():
+    """暂停自动重封装（下载高峰期用）：入库分流队列和空闲扫描都停。"""
+    from loc_gallery.remux_manager import set_auto_remux_paused
+
+    set_auto_remux_paused(True)
+    return {"ok": True, "paused": True}
+
+
+@app.post("/api/remux/resume")
+async def api_remux_resume():
+    from loc_gallery.remux_manager import set_auto_remux_paused
+
+    set_auto_remux_paused(False)
+    return {"ok": True, "paused": False}
 
 
 @app.post("/api/remux/batch/begin")

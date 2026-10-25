@@ -26,6 +26,22 @@ _jobs: dict[str, "RemuxJob"] = {}
 _session_lock = threading.Lock()
 _batch_sessions: set[str] = set()
 _active_job_count: dict[str, int] = {}
+# 手动暂停自动重封装：下载高峰期用（每个文件都要读写一遍，会跟下载抢磁盘）
+_auto_remux_paused = False
+
+
+def set_auto_remux_paused(paused: bool) -> None:
+    """暂停/恢复自动重封装。入库分流队列和空闲扫描都停；手动单个修复不受影响。"""
+    global _auto_remux_paused
+    with _session_lock:
+        _auto_remux_paused = bool(paused)
+    if not paused:
+        _remux_queue_event.set()
+
+
+def is_auto_remux_paused() -> bool:
+    with _session_lock:
+        return _auto_remux_paused
 
 
 def begin_remux_batch(library_id: str) -> None:
@@ -397,6 +413,7 @@ def get_global_status() -> dict:
         "queued": queued,
         "done_total": done_total,
         "failed_keys": len(_remux_failed_keys),
+        "paused": is_auto_remux_paused(),
     }
 
 
@@ -601,8 +618,14 @@ def _auto_remux_loop() -> None:
     from loc_gallery.library_context import set_thread_library
 
     while not _auto_remux_stop.is_set():
+        if is_auto_remux_paused():
+            # 暂停期间不消费队列，新文件照常入队，恢复后一起处理
+            _auto_remux_stop.wait(2)
+            continue
         # 优先处理入库分流排队的待修复视频（修复 → 重入库 → 缩略图/时长，严格串行）
         while not _auto_remux_stop.is_set():
+            if is_auto_remux_paused():
+                break
             item_key = _pop_remux_queue()
             if item_key is None:
                 break

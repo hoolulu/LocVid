@@ -50,6 +50,10 @@ export const getDurationStatus = () => api<Record<string, unknown>>('/duration/s
 
 export const getGlobalRemuxStatus = () => api<Record<string, unknown>>('/remux/status')
 
+export const pauseAutoRemux = () => api('/remux/pause', { method: 'POST' })
+
+export const resumeAutoRemux = () => api('/remux/resume', { method: 'POST' })
+
 
 export const scanFormat = () => api('/format/scan', { method: 'POST' })
 

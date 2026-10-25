@@ -20,6 +20,10 @@ LIBRARIES_ROOT = DATA_DIR / "libraries"
 _DEFAULT_LIBRARY_ENV = os.environ.get("LOCVID_DEFAULT_LIBRARY", "").strip()
 VIDEO_ROOT = Path(_DEFAULT_LIBRARY_ENV) if _DEFAULT_LIBRARY_ENV else None
 
+# 小于这个大小不算视频：下载器/浏览器扩展常先落一个几字节的占位文件（如 "PLACEHOLDER"），
+# 以前会把占位文件也收进库、还会被自动命名成正式番号，真实数据随后就落在了错的地方。
+MIN_VIDEO_BYTES = 1024 * 1024
+
 # 全局设置（应用级）
 SETTINGS_FILE = DATA_DIR / "settings.json"
 LOG_FILE = PROJECT_ROOT / "logs" / "server.log"
@@ -109,7 +113,7 @@ VIDEO_EXTENSIONS = {
 }
 
 IGNORE_DIRS = {
-    ".thumbs", "WEB", "Loc-Gallery", "loc-gallery", "AVV-Gallery", "avv-gallery", "__pycache__", ".git",
+    ".thumbs", "WEB", "Loc-Gallery", "loc-gallery", "__pycache__", ".git",
     "cache", "data", "node_modules", "src", "scripts", "tests", "libraries",
 }
 
