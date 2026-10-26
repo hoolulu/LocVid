@@ -66,8 +66,13 @@ const highlightedTitle = computed(() => {
 })
 
 const progressPct = computed(() => {
-  if (!props.video.playDuration || !props.video.playPosition) return 0
-  return Math.min(100, (props.video.playPosition / props.video.playDuration) * 100)
+  // 分母优先用历史里的播放时长；旧记录常常只存了 position 没存 duration，
+  // 这时退回 ffprobe 探测的 durationSec，否则整条进度条都算不出来（封面不显示进度）
+  const total = props.video.playDuration || props.video.durationSec || 0
+  const pos = props.video.playPosition || 0
+  // 1 秒以下（点开就关的残留）不算看过，免得给每张卡都留一个 2px 小点
+  if (!(total > 0) || pos < 1) return 0
+  return Math.min(100, (pos / total) * 100)
 })
 
 function formatDuration(sec?: number) {
@@ -101,6 +106,22 @@ function onCheckChange(e: Event) {
   e.stopPropagation()
   ui.toggleSelect(props.video.id)
 }
+
+function onThumbEnter(e: MouseEvent) {
+  scheduleShow(props.video, e.currentTarget as HTMLElement)
+  // 钉住中（浮层保留）不启动新卡片预览；否则正常启动
+  if (!pinned) startPreview(props.video)
+}
+
+function onThumbLeave(e: MouseEvent) {
+  const anchor = e.currentTarget as HTMLElement
+  onAnchorLeave(e, anchor)
+  // 钉住模式：浮层保留（含预览视频继续播放），由关闭按钮统一停止。
+  // 鼠标是移进浮层（去点「本地播放」）：预览别停，否则浮层里画面变空白
+  const related = e.relatedTarget
+  const toTip = related instanceof Element && !!related.closest('.path-tip')
+  if (settings.settings?.html5_hover_tip_pin === false && !toTip) stopPreview()
+}
 </script>
 
 <template>
@@ -114,20 +135,8 @@ function onCheckChange(e: Event) {
   >
     <div
       class="thumb-wrap relative aspect-video bg-[var(--lg-thumb-placeholder-bg)]"
-      @mouseenter="(e) => {
-        scheduleShow(video, e.currentTarget as HTMLElement)
-        // 钉住中（浮层保留）不启动新卡片预览；否则正常启动
-        if (!pinned) startPreview(video)
-      }"
-      @mouseleave="(e) => {
-        const anchor = e.currentTarget as HTMLElement
-        onAnchorLeave(e, anchor)
-        // 钉住模式：浮层保留（含预览视频继续播放），由关闭按钮统一停止。
-        // 鼠标是移进浮层（去点「本地播放」）：预览别停，否则浮层里画面变空白
-        const toTip =
-          e.relatedTarget instanceof Element && !!e.relatedTarget.closest('.path-tip')
-        if (settings.settings?.html5_hover_tip_pin === false && !toTip) stopPreview()
-      }"
+      @mouseenter="onThumbEnter"
+      @mouseleave="onThumbLeave"
     >
       <!-- 不用 loading="lazy"：虚拟网格（VirtualVideoGrid）已只渲染视口附近的行，
            首屏 img 本应立即可见；lazy 判定基于 img 视口位置，切库/滚动瞬间 topPad 高度
@@ -148,10 +157,13 @@ function onCheckChange(e: Event) {
         {{ thumbPlaceholder() }}
       </div>
       <div
-        v-if="showProgress && progressPct > 2"
+        v-if="showProgress && progressPct > 0"
         class="absolute bottom-0 left-0 right-0 z-[1] h-1 bg-black/40"
       >
-        <div class="h-full bg-[var(--lg-accent)]" :style="{ width: `${progressPct}%` }" />
+        <div
+          class="h-full bg-[var(--lg-accent)]"
+          :style="{ width: `${progressPct}%`, minWidth: '2px' }"
+        />
       </div>
       <span v-if="video.formatBadge" class="thumb-overlay thumb-format-badge">
         {{ formatBadgeLabel(video.formatBadge) }}

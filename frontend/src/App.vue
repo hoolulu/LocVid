@@ -50,6 +50,19 @@ watch(
   },
 )
 
+// 播放器关掉后刷新当前列表：播放进度保存走 /api/history/position，不发 version 事件，
+// 而浏览页一直挂在播放器下面（路由不变、组件不重挂）→ 卡片进度条停留在进播放器之前的
+// 状态，刚看过的片子关上播放器看不到进度条。只在列表页刷新，专辑首页/统计页不白拉请求。
+const LIST_ROUTES = ['browse', 'favorites', 'continue-watching', 'most-played', 'album-detail']
+watch(
+  () => player.open,
+  (open, prevOpen) => {
+    if (!prevOpen || open) return
+    if (!LIST_ROUTES.includes(String(route.name || ''))) return
+    void gallery.loadVideos()
+  },
+)
+
 // 路由切换（切页到收藏/历史/专辑等）时清理悬停浮层与预览：
 // 否则浮层跨页残留（钉住模式永久显示），预览 <video> 继续静音播放占带宽（P2）
 watch(

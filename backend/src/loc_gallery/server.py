@@ -995,7 +995,10 @@ def _video_to_dict(library_id: str, v, *, album_ids: list[str] | None = None) ->
     fav_at = None
     if is_favorite(library_id, v.id):
         fav_at = get_added_at(library_id, v.id)
-    duration = get_video_duration_sec(v.id, mtime=v.mtime, size=v.size)
+    # 时长优先取本库缩略图索引里的 ffprobe 缓存（get_video_duration_sec 内部按活跃库
+    # 取索引，多库下会查错库），拿不到再退回历史里的播放时长
+    thumb_index, _, _ = snapshot_thumb_list_state(library_id)
+    duration = duration_sec_from_index_entry(thumb_index.get(v.id), mtime=v.mtime, size=v.size)
     if not duration and hist:
         duration = hist.get("duration_sec")
     return {
@@ -1016,7 +1019,9 @@ def _video_to_dict(library_id: str, v, *, album_ids: list[str] | None = None) ->
         "playedAt": hist.get("played_at") if hist else None,
         "playCount": hist.get("play_count") if hist else None,
         "playPosition": hist.get("position_sec") if hist else None,
-        "playDuration": hist.get("duration_sec") if hist else None,
+        # 历史里的 duration_sec 只有「上报过时长的播放」才写入，旧记录/外部播放器记录多半缺
+        # 这一项（前端算不出百分比 → 封面进度条消失）。缺失时用索引时长兜底。
+        "playDuration": (hist.get("duration_sec") or duration) if hist else None,
         "durationSec": duration,
         "tags": get_video_tags(library_id, v.id),
         "albumIds": album_ids if album_ids is not None else get_album_ids_for_video(library_id, v.id),
@@ -1076,7 +1081,8 @@ def _videos_to_dicts(
             "playedAt": hist.get("played_at") if hist else None,
             "playCount": hist.get("play_count") if hist else None,
             "playPosition": hist.get("position_sec") if hist else None,
-            "playDuration": hist.get("duration_sec") if hist else None,
+            # 同 _video_to_dict：历史缺 duration_sec 时用索引时长兜底，否则封面进度条不显示
+            "playDuration": (hist.get("duration_sec") or duration) if hist else None,
             "durationSec": duration,
             "tags": tag_map.get(v.id, []),
             "albumIds": album_map.get(v.id, []),
@@ -2406,15 +2412,21 @@ async def api_history_record(req: FavoriteToggleRequest, library_id: str = Depen
 
 @app.post("/api/history/position")
 async def api_history_position(req: HistoryPositionRequest, library_id: str = Depends(resolve_library_id)):
-    if not req.id or not get_by_id(library_id, req.id):
+    item = get_by_id(library_id, req.id) if req.id else None
+    if not item:
         raise HTTPException(404, "视频不存在")
     if req.position_sec < 0:
         raise HTTPException(400, "position_sec 无效")
+    # 播放器上报的 duration 可能为 0/缺失（movi 解封装未就绪、外部播放器场景），
+    # 只存 position 会让封面进度条永久算不出来；此时用 ffprobe 缓存的时长补上
+    duration_sec = req.duration_sec
+    if not duration_sec or duration_sec <= 0:
+        duration_sec = get_video_duration_sec(req.id, mtime=item.mtime, size=item.size)
     entry = save_position(
         library_id,
         req.id,
         req.position_sec,
-        duration_sec=req.duration_sec,
+        duration_sec=duration_sec,
     )
     return {
         "ok": True,
@@ -2678,7 +2690,11 @@ async def api_play_info(video_id: str, library_id: str = Depends(resolve_library
         "remuxable": remuxable,
         "remux_reason": remux_reason,
         "playPosition": hist.get("position_sec"),
-        "playDuration": hist.get("duration_sec"),
+        # 同列表接口：历史缺 duration_sec 时用 ffprobe 缓存兜底，否则前端续播/进度判断失真
+        "playDuration": (
+            (hist.get("duration_sec") or get_video_duration_sec(video_id, mtime=item.mtime, size=item.size))
+            if hist else None
+        ),
         # 浏览器原生 <video> 能不能直接播：标准 MP4 + H.264 这类走原生通道
         # （系统硬解 + GPU 合层），比 movi-player 的 WASM 解封装 + canvas 渲染轻得多。
         # 判定与悬停预览共用一套规则（experimental_direct / 伪装 TS 都排除）。

@@ -32,8 +32,8 @@ export function normalizeResumePosition(pos: number, durationSec?: number | null
 }
 
 export function getSavedPosition(
-  playPosition?: number,
-  playDuration?: number,
+  playPosition?: number | null,
+  playDuration?: number | null,
   enabled = true,
 ): number | null {
   if (!enabled) return null

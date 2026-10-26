@@ -601,11 +601,25 @@ export function usePlayback() {
 
   async function cancelPlayback() {
 
+    // 关播放器前补一次进度：平时只有 timeupdate 的 2.5s 防抖保存，按返回键时
+    // 最后几秒（刚打开就关则整段）会丢，卡上进度条和续播位置都不准。
+    // 先 unbindSaver 清掉待触发的防抖保存，避免它带着旧进度晚一步覆盖这条。
+    const closing = player.nativePlayer ?? player.moviPlayer
+    const closingId = player.playingId
+
     player.bumpSession()
 
     unbindSaver()
 
     clearMediaSession()
+
+    if (closing && closingId && closing.getCurrentTime() > 1) {
+      try {
+        await savePosition(closingId, closing.getCurrentTime(), closing.getDuration() || undefined)
+      } catch {
+        /* 关播放器不能被进度保存失败卡住 */
+      }
+    }
 
     await stopSlice()
 

@@ -54,8 +54,8 @@ export interface Video {
   favoritedAt?: number
   playedAt?: number
   playCount: number
-  playPosition: number
-  playDuration: number
+  playPosition: number | null
+  playDuration: number | null
   durationSec?: number
   albumIds: string[]
   formatBadge?: string
@@ -96,7 +96,7 @@ export interface PlayInfo {
   title: string
   mode: 'direct' | 'hls' | 'external' | 'unsupported'
   remuxable: boolean
-  playPosition: number
+  playPosition: number | null
   codec?: string
   structure?: { kind?: string; size_bytes?: number }
   reason?: string
