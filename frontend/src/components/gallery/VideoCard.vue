@@ -109,8 +109,9 @@ function onCheckChange(e: Event) {
 
 function onThumbEnter(e: MouseEvent) {
   scheduleShow(props.video, e.currentTarget as HTMLElement)
-  // 钉住中（浮层保留）不启动新卡片预览；否则正常启动
-  if (!pinned) startPreview(props.video)
+  // 钉住中（浮层保留）不启动新卡片预览；否则正常启动。
+  // 注意 pinned 是 Ref：脚本里必须 .value，模板才会自动解包
+  if (!pinned.value) startPreview(props.video)
 }
 
 function onThumbLeave(e: MouseEvent) {

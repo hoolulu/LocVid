@@ -2,6 +2,41 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [16.5.1] - 2026-10-29
+
+### Fixed (English)
+
+- **Cover progress bars were missing on many cards (P1)**: some play-history entries store only
+  `position_sec` — the duration was never recorded for that play (entries created before it was
+  tracked, or playback handed off to an external player, which only bumps `played_at`). The list,
+  single-video and play-info endpoints returned `playDuration: null`, so the card had no
+  denominator and drew nothing. They now fall back to the ffprobe duration cached in the
+  thumbnail index, and saving progress writes that duration when the player reports none.
+- **Progress under 2% was hidden (P1)**: the bar was skipped below 2%, which also hid it for long
+  videos where a few minutes only reach half a percent. Any saved position of one second or more
+  now draws a bar, with a 2 px minimum width so tiny proportions stay visible.
+- **A freshly watched video had no progress bar until a manual reload (P1)**: the browse page
+  stays mounted behind the player and progress saves emit no version event, so cards kept the
+  state they had before playback started. Closing the player now saves the exact final position
+  and duration (the 2.5 s debounce lost the last few seconds) and refreshes the current list.
+- **Production build failed on type errors (P2)**: the inline hover handlers of the video card
+  referenced `Element` and a nullable `relatedTarget`, which `vue-tsc` rejects. They moved into
+  typed script functions.
+
+### 修复（中文）
+
+- **大量封面不显示进度条（P1）**：部分播放记录只存了 `position_sec`，那次播放没记下时长（早于时长
+  字段的旧记录，或者交给了只更新 `played_at` 的外部播放器）。列表、单条、播放信息三个接口原样返回
+  `playDuration: null`，前端没有分母就算不出百分比。现在缺时长时退回缩略图索引里 ffprobe 缓存的
+  时长，保存进度时播放器没给时长也用它补上。
+- **2% 以下的进度被吞掉（P1）**：原来不到 2% 不画条，长片看了几分钟也才零点几个百分点，等于永远
+  看不到。现在只要存过 1 秒以上就画，宽度按比例，并留 2 像素最小值，比例再小也看得见。
+- **刚看完的片子要手动刷新才出进度条（P1）**：浏览页一直挂在播放器下面，进度保存又不发 version
+  事件，卡片还停着播放前的数据。关闭播放器时先补存一次精确的当前位置和时长（2.5 秒防抖会丢最后
+  几秒），再重拉当前列表。
+- **生产构建被类型错误挡住（P2）**：卡片内联的悬停处理引用了 `Element` 和可空的 `relatedTarget`，
+  `vue-tsc` 直接报错。处理逻辑改成脚本里有类型标注的函数。
+
 ## [16.5.0] - 2026-10-26
 
 ### Added (English)
